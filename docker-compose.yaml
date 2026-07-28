@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  icinga2:
+    image: jordan/icinga2:latest
+    container_name: icinga-lab
+    hostname: icinga-master
+    ports:
+      - "80:80" # HTTP (Web Interface)
+      - "443:443" # HTTPS
+      - "5665:5665" # Icinga API (Important for your Agent)
+      - "3306:3306" # MySQL Database (For historical queries)
+    environment:
+      - ICINGAWEB2_ADMIN_USER=admin
+      - ICINGAWEB2_ADMIN_PASS=admin123
+    volumes:
+      - icinga-data:/var/lib/icinga2
+      - icinga-mysql:/var/lib/mysql
+      - icinga-web:/etc/icingaweb2
+
+volumes:
+  icinga-data:
+  icinga-mysql:
+  icinga-web:
