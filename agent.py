@@ -7,6 +7,12 @@ from typing import Optional
 # Import our custom modules
 import icinga_api
 import knowledge_base
+import database_api
+import graphite_api
+import matplotlib.pyplot as plt
+import io
+import base64
+from datetime import datetime
 
 # --- Define Tools for the Agent ---
 
@@ -28,6 +34,22 @@ def get_all_hosts(filter_state: Optional[str] = None) -> str:
 def get_host_details(hostname: str) -> str:
     """Retrieves specific template usage, custom variables, and performance data for a single host."""
     return str(icinga_api.get_host_details(hostname))
+
+@tool
+def get_historical_outages(hostname: str) -> str:
+    """
+    Queries the database for historical outages or crashes for a specific host.
+    Use this to answer questions like 'has this host gone down recently?' or 'what is the history of this host?'
+    """
+    return str(database_api.get_historical_outages(hostname))
+
+@tool
+def get_recent_downtimes() -> str:
+    """
+    Queries the database for the most recent scheduled downtimes.
+    Use this to see who scheduled maintenance or if a host is currently down intentionally.
+    """
+    return str(database_api.get_recent_downtimes())
 
 @tool
 def get_critical_services() -> str:
@@ -74,6 +96,51 @@ def group_and_summarize_alerts() -> str:
         
     return summary
 
+@tool
+def plot_historical_metrics(hostname: str, metric_name: str) -> str:
+    """
+    Plots the historical time-series data for a specific metric and returns a visual graph.
+    Use this when the user asks to 'show me the trend', 'plot the cpu', 'visualize the past data', etc.
+    It returns a markdown image string that the UI will automatically render.
+    """
+    # Fetch data
+    # Standard Graphite metric format: icinga2.<hostname>.cpu.usage
+    target_metric = f"icinga2.{hostname}.{metric_name}.usage" 
+    result = graphite_api.get_historical_data(target_metric)
+    
+    if "error" in result or not result.get("data"):
+        return f"Could not fetch historical data for {hostname} - {metric_name}."
+        
+    datapoints = result['data'][0]['datapoints']
+    
+    # Unpack datapoints
+    y_values = [pt[0] for pt in datapoints if pt[0] is not None]
+    # Convert epoch to datetime for x-axis
+    x_values = [datetime.fromtimestamp(pt[1]) for pt in datapoints if pt[0] is not None]
+    
+    if not y_values:
+        return "No valid datapoints found to plot."
+
+    # Generate Plot
+    plt.figure(figsize=(10, 4))
+    plt.plot(x_values, y_values, marker='o', linestyle='-', color='b')
+    plt.title(f"Historical Trend: {metric_name.upper()} on {hostname}")
+    plt.xlabel("Time")
+    plt.ylabel("Usage")
+    plt.grid(True)
+    plt.tight_layout()
+    
+    # Save to Base64 in memory
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    plt.close()
+    
+    # Return markdown compatible image string
+    # A markdown text UI like Streamlit will render this as an actual image!
+    return f"![Historical {metric_name} Trend](data:image/png;base64,{image_base64})\n\n*(Graphite Data Source: {result['source']})*"
+
 # --- Agent Initialization ---
 
 # List of all tools available to the agent
@@ -81,10 +148,13 @@ tools = [
     get_system_status,
     get_all_hosts,
     get_host_details,
+    get_historical_outages,
+    get_recent_downtimes,
     get_critical_services,
     get_templates_and_zones,
     search_troubleshooting_guides,
-    group_and_summarize_alerts
+    group_and_summarize_alerts,
+    plot_historical_metrics
 ]
 
 def create_agent():
@@ -98,10 +168,12 @@ def create_agent():
     
     # Define the ReAct prompt template for robust open-source model tool calling
     template = '''You are a highly capable AI Assistant integrated with an Icinga 2 monitoring system.
-Your role is to act as a Read-Only Observability Agent for Phase 1.
-When a user asks about system health, down hosts, or critical alerts, ALWAYS use the appropriate tools to fetch live data.
-If you find a critical alert or down host, you should proactively use the `search_troubleshooting_guides` tool to provide Root Cause Analysis (RCA).
-Use `group_and_summarize_alerts` if the user asks for an overview of current problems or if there are too many alerts.
+Your role is to act as an Observability Agent. You have access to both LIVE API data and HISTORICAL Database/Graphite records.
+When a user asks about system health, down hosts, or critical alerts right now, ALWAYS use the appropriate API tools to fetch live data.
+If a user asks about PAST events, outages, or scheduled maintenance, ALWAYS use the database tools (`get_historical_outages`, `get_recent_downtimes`).
+If a user asks to see trends, visualize data, or see a graph of past metrics (e.g. CPU, memory), use the `plot_historical_metrics` tool.
+If you find a critical alert or down host, proactively use the `search_troubleshooting_guides` tool to provide Root Cause Analysis (RCA).
+Use `group_and_summarize_alerts` if the user asks for an overview of current problems.
 
 Answer the following questions as best you can. You have access to the following tools:
 
@@ -144,6 +216,6 @@ if __name__ == "__main__":
     print("Testing Agent Initialization...")
     executor = create_agent()
     print("Agent Executor created successfully. Testing a call...")
-    response = executor.invoke({"input": "What is the system status?"})
+    response = executor.invoke({"input": "Are there any recent scheduled downtimes in the history?"})
     print("\n--- QWEN RESPONSE ---")
     print(response["output"])

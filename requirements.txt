@@ -8,3 +8,4 @@ streamlit
 requests
 urllib3
 pydantic
+matplotlib
