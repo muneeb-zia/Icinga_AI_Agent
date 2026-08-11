@@ -1,13 +1,19 @@
 import requests
+import time
+import random
 from typing import Dict, Any
 
 # Placeholder for the future real Graphite API URL
 GRAPHITE_URL = "http://localhost:8080"
+DEMO_MODE = False # Set to False when using real API
 
 def get_historical_data(target_metric: str, from_time: str = "-24h") -> Dict[str, Any]:
     """
     Fetches time-series data from Graphite.
     """
+    if DEMO_MODE:
+        return _generate_mock_data(target_metric, from_time)
+        
     endpoint = f"{GRAPHITE_URL}/render"
     params = {
         "target": target_metric,
@@ -27,8 +33,26 @@ def get_historical_data(target_metric: str, from_time: str = "-24h") -> Dict[str
     except requests.exceptions.RequestException as e:
         return {"error": f"API Error: {str(e)}"}
 
+def _generate_mock_data(target_metric: str, from_time: str) -> Dict[str, Any]:
+    """Generates fake time-series data simulating a CPU spike for local testing."""
+    current_time = int(time.time())
+    start_time = current_time - (24 * 3600)
+    datapoints = []
+    
+    for i in range(24):
+        timestamp = start_time + (i * 3600)
+        # Simulate a normal CPU load around 20-30%, but a spike to 95% at hour 18
+        if i in [17, 18, 19]:
+            value = random.uniform(85.0, 98.0)
+        else:
+            value = random.uniform(15.0, 35.0)
+        datapoints.append([value, timestamp])
+        
+    mock_response = [{"target": target_metric, "datapoints": datapoints}]
+    return {"status": "success", "data": mock_response, "source": "Demo Data"}
+
 if __name__ == "__main__":
-    print("Testing Real Graphite API Integration...")
+    print(f"Testing Graphite API Integration (Demo Mode: {DEMO_MODE})...")
     result = get_historical_data("icinga2.master-node.cpu.usage")
     if "error" in result:
         print(f"Failed to fetch data: {result['error']}")

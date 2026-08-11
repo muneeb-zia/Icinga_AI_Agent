@@ -3,9 +3,13 @@ sentence-transformers
 langchain
 langchain-community
 langchain-ollama
+langchain-huggingface
 chromadb
 streamlit
 requests
 urllib3
 pydantic
 matplotlib
+opensearch-py
+paramiko
+mysql-connector-python

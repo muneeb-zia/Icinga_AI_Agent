@@ -2,7 +2,7 @@
 
 This project is a highly intelligent, locally hosted **Read-Only Observability Agent** for Icinga 2. It translates natural language questions into executable API queries, correlates critical alerts, and uses a Retrieval-Augmented Generation (RAG) pipeline to provide Root Cause Analysis (RCA) for down hosts.
 
-Built with **LangChain**, **Streamlit**, and a local **Qwen2.5-Coder** LLM.
+Built with **LangChain**, **Streamlit**, and a remote **Gemma (gemma4:e4b)** LLM.
 
 ---
 
@@ -10,21 +10,16 @@ Built with **LangChain**, **Streamlit**, and a local **Qwen2.5-Coder** LLM.
 - **Natural Language Icinga Queries**: Ask "List all down hosts" and the agent will dynamically query the Icinga API.
 - **RAG-based Troubleshooting**: Automatically reads internal Markdown documentation to provide RCA for critical services.
 - **Alert Correlation**: Summarizes multiple critical alerts to prevent alert fatigue and detect wider network outages.
-- **Local & Secure**: Uses `Ollama` to run the Qwen LLM entirely on your local machine. No data is sent to OpenAI or cloud providers.
+- **Local & Secure**: Uses a remotely hosted `gemma4:e4b` model on the company's internal network. No data is sent to OpenAI or external cloud providers.
 
 ---
 
 ## ⚙️ Prerequisites
 
-1. **Docker**: Used to run the local Icinga 2 instance.
-2. **Ollama**: Must be installed and running on your host machine with the Qwen model.
-3. **Python 3.10+**
+1. **Docker**: Used to run the local Icinga 2 lab environment (Icinga, MySQL, OpenSearch).
+2. **Python 3.10+**: Used to run the Streamlit AI Agent interface.
 
-### Setting up the LLM
-Make sure Ollama is installed, then download the Qwen model:
-```bash
-ollama run qwen2.5-coder:7b
-```
+*(Note: The LLM model used is a remote Gemma model (`gemma4:e4b`) hosted on a dedicated server at `http://gpu-server.internal:11434`. No local LLM installation is required!)*
 
 ---
 

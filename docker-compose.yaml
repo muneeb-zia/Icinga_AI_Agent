@@ -1,15 +1,13 @@
-version: '3.8'
-
 services:
   icinga2:
     image: jordan/icinga2:latest
     container_name: icinga-lab
     hostname: icinga-master
     ports:
-      - "80:80" # HTTP (Web Interface)
-      - "443:443" # HTTPS
-      - "5665:5665" # Icinga API (Important for your Agent)
-      - "3306:3306" # MySQL Database (For historical queries)
+      - "80:80"       # HTTP (Web Interface)
+      - "443:443"     # HTTPS
+      - "5665:5665"   # Icinga API (Important for your Agent)
+      - "3306:3306"   # MySQL Database (For historical queries)
     environment:
       - ICINGAWEB2_ADMIN_USER=admin
       - ICINGAWEB2_ADMIN_PASS=admin123
@@ -17,8 +15,55 @@ services:
       - icinga-data:/var/lib/icinga2
       - icinga-mysql:/var/lib/mysql
       - icinga-web:/etc/icingaweb2
+    networks:
+      - icinga-net
+    depends_on:
+      - opensearch
+
+  # Isolated OpenSearch sandbox — for local testing ONLY.
+  # This is NOT connected to the company's opensearch.internal instance.
+  # Icinga writes all its metrics/events here, and the AI Agent reads from here.
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    container_name: opensearch-lab
+    hostname: opensearch
+    environment:
+      - discovery.type=single-node
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true   # No auth needed for local testing
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"   # OpenSearch REST API (Agent reads from here)
+      - "9600:9600"   # OpenSearch performance analyzer
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    networks:
+      - icinga-net
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.13.0
+    container_name: opensearch-dashboards-lab
+    ports:
+      - "5601:5601"
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    networks:
+      - icinga-net
+    depends_on:
+      - opensearch
+
+networks:
+  icinga-net:
+    driver: bridge
 
 volumes:
   icinga-data:
   icinga-mysql:
   icinga-web:
+  opensearch-data:
