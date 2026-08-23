@@ -460,7 +460,7 @@ def create_host_template(object_name: str, check_command: str = "hostalive") -> 
     data = {"object_name": object_name, "object_type": "template", "check_command": check_command}
     return _director_request("host", method="POST", data=data)
 
-def create_host(object_name: str, address: str, imports: Optional[Any] = None, display_name: Optional[str] = None, groups: Optional[Any] = None) -> Dict:
+def create_host(object_name: str, address: str, imports: Optional[Any] = None, display_name: Optional[str] = None, groups: Optional[Any] = None, check_command: Optional[str] = None) -> Dict:
     if imports is None:
         imports_list = []
     elif isinstance(imports, str):
@@ -471,6 +471,9 @@ def create_host(object_name: str, address: str, imports: Optional[Any] = None, d
     data = {"object_name": object_name, "object_type": "object", "address": address}
     if imports_list:
         data["imports"] = imports_list
+    else:
+        data["check_command"] = check_command or "hostalive"
+
     if display_name:
         data["display_name"] = display_name
     if groups:
