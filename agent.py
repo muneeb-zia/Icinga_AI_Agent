@@ -38,6 +38,35 @@ def _parse_str(value: str, key: str = None) -> str:
             pass
     return value
 
+def _extract_params(query_json: Any = None, **kwargs) -> Dict[str, Any]:
+    """
+    Universally unwrap parameters whether passed as:
+    1. Keyword arguments: onboard_new_host(object_name="x", address="y")
+    2. JSON string: onboard_new_host('{"object_name": "x", "address": "y"}')
+    3. Dictionary: onboard_new_host({"object_name": "x", "address": "y"})
+    4. Positional string: force_recheck("icinga-master")
+    """
+    params = {}
+    if kwargs:
+        params.update(kwargs)
+    if query_json is not None:
+        if isinstance(query_json, dict):
+            params.update(query_json)
+        elif isinstance(query_json, str):
+            q_str = query_json.strip()
+            if (q_str.startswith("{") and q_str.endswith("}")) or (q_str.startswith("[") and q_str.endswith("]")):
+                try:
+                    d = _json.loads(q_str)
+                    if isinstance(d, dict):
+                        params.update(d)
+                except Exception:
+                    pass
+            elif not params:
+                params["name"] = q_str
+                params["hostname"] = q_str
+                params["object_name"] = q_str
+    return params
+
 # =============================================================================
 # READ TOOLS — Phase 1 (Original)
 # =============================================================================
@@ -128,56 +157,38 @@ def group_and_summarize_alerts() -> str:
     return summary
 
 @tool
-def plot_historical_metrics(query_json: str) -> str:
+def plot_historical_metrics(hostname: Optional[str] = None, metric_name: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     Plots the historical time-series data for a specific metric and returns a visual graph.
-    Use this when the user asks to 'show me the trend', 'plot the cpu', 'visualize the past data', etc.
-    It returns a markdown image string that the UI will automatically render.
-    
-    IMPORTANT: You MUST use the exact ReAct format below, do NOT output a python function call!
-    Action: plot_historical_metrics
-    Action Input: {"hostname": "icinga-master", "metric_name": "cpu"}
+    Args:
+        hostname: The host name (e.g. 'icinga-master').
+        metric_name: The metric name (e.g. 'cpu', 'memory', 'disk').
     """
-    try:
-        import json
-        params = json.loads(query_json)
-        hostname = params.get("hostname")
-        metric_name = params.get("metric_name")
-        if not hostname or not metric_name:
-            return "Error: hostname and metric_name are required."
-    except Exception as e:
-        return f"Error parsing input JSON: {str(e)}"
-
-    # Fetch data
-    # Standard Graphite metric format: icinga2.<hostname>.cpu.usage
-    target_metric = f"icinga2.{hostname}.{metric_name}.usage" 
+    p = _extract_params(query_json, hostname=hostname, metric_name=metric_name, **kwargs)
+    h = p.get("hostname") or p.get("host") or "icinga-master"
+    m = p.get("metric_name") or p.get("metric") or "cpu"
+    target_metric = f"icinga2.{h}.{m}.usage" 
     result = graphite_api.get_historical_data(target_metric)
     
     if "error" in result or not result.get("data"):
-        return f"Could not fetch historical data for {hostname} - {metric_name}."
+        return f"Could not fetch historical data for {h} - {m}."
         
     datapoints = result['data'][0]['datapoints']
-    
-    # Unpack datapoints
     y_values = [pt[0] for pt in datapoints if pt[0] is not None]
-    # Convert epoch to datetime for x-axis
     x_values = [datetime.fromtimestamp(pt[1]) for pt in datapoints if pt[0] is not None]
     
     if not y_values:
         return "No valid datapoints found to plot."
 
-    # Generate Plot
     plt.figure(figsize=(10, 4))
     plt.plot(x_values, y_values, marker='o', linestyle='-', color='b')
-    plt.title(f"Historical Trend: {metric_name.upper()} on {hostname}")
+    plt.title(f"Historical Trend: {m.upper()} on {h}")
     plt.xlabel("Time")
     plt.ylabel("Usage")
     plt.grid(True)
     plt.tight_layout()
-    
     plt.savefig("latest_plot.png", format='png')
     plt.close()
-    
     return "Graph generated successfully and saved to latest_plot.png. Tell the user to view the graph."
 
 
@@ -186,23 +197,19 @@ def plot_historical_metrics(query_json: str) -> str:
 # =============================================================================
 
 @tool
-def get_service_details(query_json: str) -> str:
+def get_service_details(hostname: Optional[str] = None, service_name: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     Retrieves the detailed status and configuration of a specific service on a specific host.
-    Use this for deep-diving into a service issue — state, output, performance data, check intervals, etc.
-
-    IMPORTANT: Pass a JSON string with 'hostname' and 'service_name' keys.
-    Action Input: {"hostname": "icinga-master", "service_name": "disk /"}
+    Args:
+        hostname: Host name (e.g. 'icinga-master').
+        service_name: Service check name (e.g. 'disk /', 'ping4', 'http').
     """
-    try:
-        params = _json.loads(query_json)
-        hostname = params.get("hostname") or params.get("host")
-        service_name = params.get("service_name") or params.get("service")
-        if not hostname or not service_name:
-            return "Error: Both 'hostname' and 'service_name' are required."
-    except Exception as e:
-        return f"Error parsing input JSON: {str(e)}"
-    return str(icinga_api.get_service_details(hostname, service_name))
+    p = _extract_params(query_json, hostname=hostname, service_name=service_name, **kwargs)
+    h = p.get("hostname") or p.get("host") or p.get("name")
+    s = p.get("service_name") or p.get("service")
+    if not h or not s:
+        return "Error: Both 'hostname' and 'service_name' are required."
+    return str(icinga_api.get_service_details(h, s))
 
 @tool
 def get_host_services(hostname: str) -> str:
@@ -402,130 +409,108 @@ def plot_elasticsearch_performance(query_json: str) -> str:
 
 # =============================================================================
 # ACTION TOOLS — Phase 2 (Write Operations with HITL Safety)
-# =============================================================================
-
-@tool
-def acknowledge_alert(query_json: str) -> str:
+# =====================================================@tool
+def acknowledge_alert(hostname: Optional[str] = None, service: Optional[str] = None, comment: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     ACKNOWLEDGES a problem on a host or service in Icinga.
-    This stops Icinga from sending repeated notifications for this issue.
-    Use this IMMEDIATELY when the user says 'acknowledge', 'ack', 'mark as known', or 'stop alerts for'.
-    DO NOT call any other read tools first — ask for confirmation and then execute.
-    ⚠️ ACTION: Confirm with the user before calling.
     Args:
         hostname: The host with the problem (e.g., 'icinga-master').
         service: Optional specific service name. If not given, acknowledges the HOST problem.
         comment: Reason for acknowledgement (default: 'Acknowledged by AI Agent').
-
-    
-    Action Input: {"hostname": "name", "service": "svc", "comment": "comment"}
     """
-    import json
-    try:
-        p = json.loads(query_json)
-        return str(icinga_actions.acknowledge_problem(p.get("hostname"), service=p.get("service"), comment=p.get("comment", "Acknowledged by AI Agent")))
-    except Exception as e: return str(e)
+    p = _extract_params(query_json, hostname=hostname, service=service, comment=comment, **kwargs)
+    h = p.get("hostname") or p.get("host") or p.get("name")
+    if not h:
+        return "Error: 'hostname' is required to acknowledge an alert."
+    s = p.get("service") or p.get("service_name")
+    c = p.get("comment", "Acknowledged by AI Agent")
+    return str(icinga_actions.acknowledge_problem(h, service=s, comment=c))
 
 @tool
-def schedule_host_downtime(query_json: str) -> str:
+def schedule_host_downtime(hostname: Optional[str] = None, duration_hours: Optional[float] = 2.0, comment: Optional[str] = None, service: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     SCHEDULES a maintenance downtime window for a host (and optionally a specific service).
-    During downtime, Icinga suppresses all notifications for the host/service.
-    ⚠️ ACTION: This MODIFIES the monitoring system. Always describe the downtime window and confirm with the user first.
     Args:
         hostname: The host to put into downtime (e.g., 'db-master').
         duration_hours: How long the downtime should last in hours (default 2).
         comment: Reason for the downtime.
-        service: Optional specific service. If not given, the whole host goes into downtime.
-
-    
-    Action Input: {"hostname": "name", "duration_hours": 2.0, "comment": "comment", "service": "svc"}
+        service: Optional specific service.
     """
-    import json
+    p = _extract_params(query_json, hostname=hostname, duration_hours=duration_hours, comment=comment, service=service, **kwargs)
+    h = p.get("hostname") or p.get("host") or p.get("name")
+    if not h:
+        return "Error: 'hostname' is required to schedule downtime."
     try:
-        p = json.loads(query_json)
-        return str(icinga_actions.schedule_downtime(p.get("hostname"), duration_hours=float(p.get("duration_hours", 2.0)), comment=p.get("comment", "Downtime scheduled by AI Agent"), service=p.get("service")))
-    except Exception as e: return str(e)
+        dur = float(p.get("duration_hours", 2.0))
+    except Exception:
+        dur = 2.0
+    c = p.get("comment", "Downtime scheduled by AI Agent")
+    s = p.get("service") or p.get("service_name")
+    return str(icinga_actions.schedule_downtime(h, duration_hours=dur, comment=c, service=s))
 
 @tool
-def add_host_comment(query_json: str) -> str:
+def add_host_comment(hostname: Optional[str] = None, comment: Optional[str] = None, service: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     ADDS a comment/note to a host or service in Icinga Web 2.
-    Comments are visible to all operators in the Icinga dashboard. Useful for logging AI observations or investigation notes.
-    ⚠️ ACTION: This MODIFIES the monitoring system. Confirm with the user before adding comments.
     Args:
         hostname: The host to comment on.
         comment: The note to add.
         service: Optional specific service to comment on.
-
-    
-    Action Input: {"hostname": "name", "comment": "note", "service": "svc"}
     """
-    import json
-    try:
-        p = json.loads(query_json)
-        return str(icinga_actions.add_comment(p.get("hostname"), comment=p.get("comment"), service=p.get("service")))
-    except Exception as e: return str(e)
+    p = _extract_params(query_json, hostname=hostname, comment=comment, service=service, **kwargs)
+    h = p.get("hostname") or p.get("host") or p.get("name")
+    if not h:
+        return "Error: 'hostname' is required to add a comment."
+    c = p.get("comment") or p.get("note") or "Comment added by AI Agent"
+    s = p.get("service") or p.get("service_name")
+    return str(icinga_actions.add_comment(h, comment=c, service=s))
 
 @tool
-def remove_alert_acknowledgement(query_json: str) -> str:
+def remove_alert_acknowledgement(hostname: Optional[str] = None, service: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     REMOVES an existing acknowledgement from a host or service.
-    This re-enables notifications for the problem. Use when an ack was premature or the issue was misidentified.
-    ⚠️ ACTION: This MODIFIES the monitoring system. Confirm with the user first.
     Args:
         hostname: The host to remove acknowledgement from.
         service: Optional specific service.
-
-    
-    Action Input: {"hostname": "name", "service": "svc"}
     """
-    import json
-    try:
-        p = json.loads(query_json)
-        return str(icinga_actions.remove_acknowledgement(p.get("hostname"), service=p.get("service")))
-    except Exception as e: return str(e)
+    p = _extract_params(query_json, hostname=hostname, service=service, **kwargs)
+    h = p.get("hostname") or p.get("host") or p.get("name")
+    if not h:
+        return "Error: 'hostname' is required to remove acknowledgement."
+    s = p.get("service") or p.get("service_name")
+    return str(icinga_actions.remove_acknowledgement(h, service=s))
 
 @tool
-def send_notification(query_json: str) -> str:
+def send_notification(hostname: Optional[str] = None, comment: Optional[str] = None, service: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     FORCE-SENDS a custom notification for a host or service.
-    Use this to explicitly alert the on-call team about something the AI has discovered,
-    even if Icinga wouldn't normally notify at this time.
-    ⚠️ ACTION: This sends real notifications to on-call staff. Always confirm with the user first.
     Args:
         hostname: The host to notify about.
         comment: The notification message.
         service: Optional specific service.
-
-    
-    Action Input: {"hostname": "name", "comment": "note", "service": "svc"}
     """
-    import json
-    try:
-        p = json.loads(query_json)
-        return str(icinga_actions.send_custom_notification(p.get("hostname"), comment=p.get("comment", "Custom notification from AI Agent"), service=p.get("service")))
-    except Exception as e: return str(e)
+    p = _extract_params(query_json, hostname=hostname, comment=comment, service=service, **kwargs)
+    h = p.get("hostname") or p.get("host") or p.get("name")
+    if not h:
+        return "Error: 'hostname' is required to send notification."
+    c = p.get("comment") or p.get("note") or "Custom notification from AI Agent"
+    s = p.get("service") or p.get("service_name")
+    return str(icinga_actions.send_custom_notification(h, comment=c, service=s))
 
 @tool
-def force_recheck(query_json: str) -> str:
+def force_recheck(hostname: Optional[str] = None, service: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     FORCES an immediate re-check of a host or service.
-    Use this after the user has made changes (restarted a service, cleared disk space, etc.)
-    to verify the fix without waiting for the next scheduled check interval.
-    ⚠️ ACTION: This triggers an immediate check execution. Confirm with the user first.
     Args:
-        hostname: The host to re-check.
-        service: Optional specific service to re-check.
-
-    
-    Action Input: {"hostname": "name", "service": "svc"}
+        hostname: The host to re-check (e.g. 'icinga-master', 'webserver-01').
+        service: Optional specific service to re-check (e.g. 'disk /').
     """
-    import json
-    try:
-        p = json.loads(query_json)
-        return str(icinga_actions.reschedule_check(p.get("hostname"), service=p.get("service")))
-    except Exception as e: return str(e)
+    p = _extract_params(query_json, hostname=hostname, service=service, **kwargs)
+    h = p.get("hostname") or p.get("host") or p.get("name")
+    if not h:
+        return "Error: 'hostname' is required to force a recheck."
+    s = p.get("service") or p.get("service_name")
+    return str(icinga_actions.reschedule_check(h, service=s))
 
 
 # =============================================================================
@@ -533,95 +518,136 @@ def force_recheck(query_json: str) -> str:
 # =============================================================================
 
 @tool
-def create_hostgroup(query_json: str) -> str:
-    """CREATES a new host group in Icinga Director.
-    Action Input: {"object_name": "name", "display_name": "disp"}
+def create_hostgroup(object_name: Optional[str] = None, display_name: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
-    import json
-    try:
-        p = json.loads(query_json)
-        return str(icinga_actions.create_hostgroup(p.get("object_name"), p.get("display_name")))
-    except Exception as e: return str(e)
+    CREATES a new host group in Icinga Director.
+    Args:
+        object_name: Unique host group name (e.g. 'linux-servers').
+        display_name: Optional human-readable display name.
+    """
+    p = _extract_params(query_json, object_name=object_name, display_name=display_name, **kwargs)
+    obj = p.get("object_name") or p.get("name")
+    if not obj:
+        return "Error: 'object_name' is required to create a host group."
+    disp = p.get("display_name")
+    return str(icinga_actions.create_hostgroup(obj, disp))
 
 @tool
-def create_host_template(query_json: str) -> str:
-    """CREATES a new host template.
-    Action Input: {"object_name": "name", "check_command": "hostalive"}
+def create_host_template(object_name: Optional[str] = None, check_command: Optional[str] = "hostalive", query_json: Optional[Any] = None, **kwargs) -> str:
     """
-    import json
-    try:
-        p = json.loads(query_json)
-        return str(icinga_actions.create_host_template(p.get("object_name"), p.get("check_command", "hostalive")))
-    except Exception as e: return str(e)
+    CREATES a new host template in Icinga Director.
+    Args:
+        object_name: Template name (e.g. 'generic-host').
+        check_command: Check command to use (default: 'hostalive').
+    """
+    p = _extract_params(query_json, object_name=object_name, check_command=check_command, **kwargs)
+    obj = p.get("object_name") or p.get("name")
+    if not obj:
+        return "Error: 'object_name' is required to create a host template."
+    cmd = p.get("check_command", "hostalive")
+    return str(icinga_actions.create_host_template(obj, check_command=cmd))
 
 @tool
-def onboard_new_host(query_json: str) -> str:
-    """ONBOARDS a new host into Icinga Director. 'imports' must contain template names.
-    Action Input: {"object_name": "name", "address": "ip", "imports": ["tpl"], "display_name": "disp", "groups": ["grp"]}
+def onboard_new_host(object_name: Optional[str] = None, address: Optional[str] = None, imports: Optional[Any] = None, display_name: Optional[str] = None, groups: Optional[Any] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
-    import json
-    try:
-        p = json.loads(query_json)
-        return str(icinga_actions.create_host(p.get("object_name"), p.get("address"), p.get("imports", []), p.get("display_name"), p.get("groups")))
-    except Exception as e: return str(e)
+    ONBOARDS a new host into Icinga Director.
+    Args:
+        object_name: Host identifier (e.g. 'test-host').
+        address: IP address (e.g. '192.168.1.50').
+        imports: Optional template names (e.g. ['generic-host'] or 'generic-host').
+        display_name: Optional human-readable name.
+        groups: Optional group names (e.g. ['linux-servers'] or 'linux-servers').
+    """
+    p = _extract_params(query_json, object_name=object_name, address=address, imports=imports, display_name=display_name, groups=groups, **kwargs)
+    obj = p.get("object_name") or p.get("hostname") or p.get("name") or p.get("host")
+    if not obj:
+        return "Error: 'object_name' (hostname) is required to onboard a new host."
+    addr = p.get("address") or p.get("ip") or p.get("ip_address") or "127.0.0.1"
+    imp = p.get("imports") or p.get("template") or p.get("templates") or []
+    disp = p.get("display_name")
+    grp = p.get("groups") or p.get("group")
+    return str(icinga_actions.create_host(obj, addr, imports=imp, display_name=disp, groups=grp))
 
 @tool
-def create_servicegroup(query_json: str) -> str:
-    """CREATES a new service group.
-    Action Input: {"object_name": "name", "display_name": "disp"}
+def create_servicegroup(object_name: Optional[str] = None, display_name: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
-    import json
-    try:
-        p = json.loads(query_json)
-        return str(icinga_actions.create_servicegroup(p.get("object_name"), p.get("display_name")))
-    except Exception as e: return str(e)
+    CREATES a new service group in Icinga Director.
+    Args:
+        object_name: Unique service group name.
+        display_name: Optional human-readable display name.
+    """
+    p = _extract_params(query_json, object_name=object_name, display_name=display_name, **kwargs)
+    obj = p.get("object_name") or p.get("name")
+    if not obj:
+        return "Error: 'object_name' is required to create a service group."
+    disp = p.get("display_name")
+    return str(icinga_actions.create_servicegroup(obj, disp))
 
 @tool
-def create_service_template(query_json: str) -> str:
-    """CREATES a new service template.
-    Action Input: {"object_name": "name", "check_command": "cmd"}
+def create_service_template(object_name: Optional[str] = None, check_command: Optional[str] = "ping4", query_json: Optional[Any] = None, **kwargs) -> str:
     """
-    import json
-    try:
-        p = json.loads(query_json)
-        return str(icinga_actions.create_service_template(p.get("object_name"), p.get("check_command")))
-    except Exception as e: return str(e)
+    CREATES a new service template in Icinga Director.
+    Args:
+        object_name: Template name.
+        check_command: Check command to use (default: 'ping4').
+    """
+    p = _extract_params(query_json, object_name=object_name, check_command=check_command, **kwargs)
+    obj = p.get("object_name") or p.get("name")
+    if not obj:
+        return "Error: 'object_name' is required to create a service template."
+    cmd = p.get("check_command", "ping4")
+    return str(icinga_actions.create_service_template(obj, cmd))
 
 @tool
-def create_service(query_json: str) -> str:
-    """CREATES a new service and attaches it to a host. 'imports' must contain template names.
-    Action Input: {"object_name": "name", "host": "hostname", "imports": ["tpl"]}
+def create_service(object_name: Optional[str] = None, host: Optional[str] = None, imports: Optional[Any] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
-    import json
-    try:
-        p = json.loads(query_json)
-        return str(icinga_actions.create_service(p.get("object_name"), p.get("host"), p.get("imports", [])))
-    except Exception as e: return str(e)
+    CREATES a new service and attaches it to a host in Icinga Director.
+    Args:
+        object_name: Service name (e.g. 'HTTP Check').
+        host: Host name to attach service to (e.g. 'test-host').
+        imports: Template name (e.g. ['generic-service']).
+    """
+    p = _extract_params(query_json, object_name=object_name, host=host, imports=imports, **kwargs)
+    obj = p.get("object_name") or p.get("service_name") or p.get("name")
+    if not obj:
+        return "Error: 'object_name' is required to create a service."
+    h = p.get("host") or p.get("hostname")
+    imp = p.get("imports") or p.get("template") or p.get("templates") or []
+    if isinstance(imp, str):
+        imp = [imp]
+    return str(icinga_actions.create_service(obj, h, imp))
 
 @tool
-def create_serviceset(query_json: str) -> str:
-    """CREATES a new service set linked to a specific host. Director requires a host association.
-    Action Input: {"object_name": "name", "host": "hostname", "description": "desc"}
+def create_serviceset(object_name: Optional[str] = None, host: Optional[str] = None, description: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
-    import json
-    try:
-        p = json.loads(query_json)
-        return str(icinga_actions.create_serviceset(p.get("object_name"), p.get("host"), p.get("description")))
-    except Exception as e: return str(e)
+    CREATES a new service set in Icinga Director.
+    Args:
+        object_name: Service set name.
+        host: Host name to link to.
+        description: Description of the service set.
+    """
+    p = _extract_params(query_json, object_name=object_name, host=host, description=description, **kwargs)
+    obj = p.get("object_name") or p.get("name")
+    if not obj:
+        return "Error: 'object_name' is required to create a service set."
+    h = p.get("host") or p.get("hostname")
+    desc = p.get("description")
+    return str(icinga_actions.create_serviceset(obj, h, desc))
 
 @tool
-def create_check_command(query_json: str) -> str:
-    """CREATES a new check command plugin definition.
-    Action Input: {"object_name": "name_here", "command": "command_here"}
+def create_check_command(object_name: Optional[str] = None, command: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
-    import json
-    try:
-        params = json.loads(query_json)
-        object_name = params.get("object_name")
-        command = params.get("command")
-        return str(icinga_actions.create_check_command(object_name, command))
-    except Exception as e:
-        return f"Error parsing JSON input: {str(e)}"
+    CREATES a new check command plugin definition.
+    Args:
+        object_name: Check command name.
+        command: Command string to execute.
+    """
+    p = _extract_params(query_json, object_name=object_name, command=command, **kwargs)
+    obj = p.get("object_name") or p.get("name")
+    if not obj:
+        return "Error: 'object_name' is required to create a check command."
+    cmd = p.get("command") or ""
+    return str(icinga_actions.create_check_command(obj, cmd))
 
 @tool
 def deploy_director_config() -> str:

@@ -460,10 +460,21 @@ def create_host_template(object_name: str, check_command: str = "hostalive") -> 
     data = {"object_name": object_name, "object_type": "template", "check_command": check_command}
     return _director_request("host", method="POST", data=data)
 
-def create_host(object_name: str, address: str, imports: list, display_name: Optional[str] = None, groups: list = None) -> Dict:
-    data = {"object_name": object_name, "object_type": "object", "address": address, "imports": imports}
-    if display_name: data["display_name"] = display_name
-    if groups: data["groups"] = groups
+def create_host(object_name: str, address: str, imports: Optional[Any] = None, display_name: Optional[str] = None, groups: Optional[Any] = None) -> Dict:
+    if imports is None:
+        imports_list = []
+    elif isinstance(imports, str):
+        imports_list = [imports]
+    else:
+        imports_list = list(imports)
+
+    data = {"object_name": object_name, "object_type": "object", "address": address}
+    if imports_list:
+        data["imports"] = imports_list
+    if display_name:
+        data["display_name"] = display_name
+    if groups:
+        data["groups"] = [groups] if isinstance(groups, str) else list(groups)
     return _director_request("host", method="POST", data=data)
 
 def create_servicegroup(object_name: str, display_name: Optional[str] = None) -> Dict:
