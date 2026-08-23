@@ -6,7 +6,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # The API endpoint for your local Docker container
 ICINGA_API_URL = "https://localhost:5665/v1"
-AUTH = ("root", "0b72c5d5d2d2fa88")
+AUTH = ("root", "***REDACTED***")
 
 def get_system_status():
     """Queries the Icinga API for system status to ensure the bridge works."""

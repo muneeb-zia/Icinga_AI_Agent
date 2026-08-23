@@ -1,0 +1,4 @@
+Name: Icinga AI Agent
+Version: 1.0.0
+Description: Integrates the local LangChain AI Agent natively into Icinga Web 2.
+Depends: monitoring

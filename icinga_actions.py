@@ -18,14 +18,13 @@ import time
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
+import os
 # Disable SSL warnings for internal dev environment
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- Configuration ---
-# In production, use a dedicated ai-action-user with scoped permissions.
-# For development, we reuse the root API credentials.
-ICINGA_API_URL = "https://localhost:5665/v1"
-ACTION_AUTH = ("root", "d2d6c11edd38d4c1")  # TODO: Replace with ai-action-user in production
+ICINGA_API_URL = os.environ.get("ICINGA_API_URL", "https://icinga-lab:5665/v1" if os.path.exists("/.dockerenv") else "https://localhost:5665/v1")
+ACTION_AUTH = ("root", os.environ.get("ICINGA_API_PASSWORD", "***REDACTED***"))
 
 
 def _action_request(endpoint: str, data: Dict, method: str = "POST") -> Any:
@@ -428,7 +427,7 @@ def reschedule_check(
 # We now use the Icinga Director API for all configuration management to support
 # host groups, service sets, check commands, and templates.
 
-DIRECTOR_API_URL = "http://localhost/icingaweb2/director"
+DIRECTOR_API_URL = os.environ.get("DIRECTOR_API_URL", "http://icinga-lab/icingaweb2/director" if os.path.exists("/.dockerenv") else "http://localhost/icingaweb2/director")
 DIRECTOR_AUTH = ("admin", "admin123")
 
 def _director_request(endpoint: str, method: str = "GET", data: Optional[Dict] = None) -> Dict[str, Any]:

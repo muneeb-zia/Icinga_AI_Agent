@@ -15,13 +15,14 @@ import base64
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
+import random
 
 # --- Configuration ---
 # LOCAL SANDBOX: Points to the isolated opensearch-lab container (localhost:9200)
 # This is NOT the company server (opensearch.internal). Safe for testing.
 ES_ENABLED = os.environ.get("ES_ENABLED", "true").lower() == "true"
 
-ES_HOST = os.environ.get("ES_HOST", "localhost")
+ES_HOST = os.environ.get("ES_HOST", "opensearch-lab" if os.path.exists("/.dockerenv") else "localhost")
 ES_PORT = int(os.environ.get("ES_PORT", "9200"))
 ES_SCHEME = os.environ.get("ES_SCHEME", "http")  # No SSL for local sandbox
 
@@ -134,7 +135,7 @@ def search_host_events(hostname: str, time_range: str = "24h", limit: int = 20) 
             "query": {
                 "bool": {
                     "must": [
-                        {"match": {"host.name": hostname}},
+                        {"match": {"host": hostname}},
                         {"range": {"@timestamp": {"gte": _parse_time_range(time_range)}}}
                     ]
                 }
@@ -269,7 +270,7 @@ def search_logs_by_keyword(keyword: str, time_range: str = "24h", limit: int = 2
                     ]
                 }
             },
-            "_source": ["@timestamp", "host.name", "service.name", "output", "message", "state"]
+            "_source": ["@timestamp", "host", "service", "output", "message", "state"]
         }
 
         result = client.search(index=ES_INDEX_PATTERN, body=query)
@@ -393,7 +394,7 @@ def get_host_state_timeline(hostname: str, time_range: str = "30d") -> Dict[str,
             "query": {
                 "bool": {
                     "must": [
-                        {"match": {"host.name": hostname}},
+                        {"match": {"host": hostname}},
                         {"range": {"@timestamp": {"gte": _parse_time_range(time_range)}}},
                         {"terms": {"type": ["StateChange", "state_change", "statechange"]}}
                     ]
@@ -563,7 +564,7 @@ def aggregate_elasticsearch_errors(time_range: str = "24h", limit: int = 5) -> D
             "aggs": {
                 "top_failing_hosts": {
                     "terms": {
-                        "field": "host.name.keyword",
+                        "field": "host.keyword",
                         "size": limit
                     }
                 }
@@ -596,7 +597,7 @@ def detect_elasticsearch_log_spikes(hostname: str) -> Dict[str, Any]:
             "query": {
                 "bool": {
                     "must": [
-                        {"match": {"host.name": hostname}},
+                        {"match": {"host": hostname}},
                         {"range": {"@timestamp": {"gte": "now-1h"}}}
                     ]
                 }
@@ -609,7 +610,7 @@ def detect_elasticsearch_log_spikes(hostname: str) -> Dict[str, Any]:
             "query": {
                 "bool": {
                     "must": [
-                        {"match": {"host.name": hostname}},
+                        {"match": {"host": hostname}},
                         {"range": {"@timestamp": {"gte": "now-25h", "lt": "now-1h"}}}
                     ]
                 }
@@ -670,13 +671,13 @@ def plot_elasticsearch_log_volume(hostname: Optional[str] = None, time_range: st
         }
         
         if hostname and hostname.lower() != "none" and hostname != "":
-            query["query"]["bool"]["must"].append({"match": {"host.name": hostname}})
+            query["query"]["bool"]["must"].append({"match": {"host": hostname}})
             
         result = client.search(index=ES_INDEX_PATTERN, body=query)
         buckets = result.get("aggregations", {}).get("log_volume_over_time", {}).get("buckets", [])
         
         if not buckets:
-            return {"error": "No log data found to plot in the given time range."}
+            return {"error": "No log data found to plot in the given time range for the specified host."}
             
         x_values = []
         y_values = []

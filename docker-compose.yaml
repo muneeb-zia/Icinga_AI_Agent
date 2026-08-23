@@ -11,14 +11,43 @@ services:
     environment:
       - ICINGAWEB2_ADMIN_USER=admin
       - ICINGAWEB2_ADMIN_PASS=admin123
+      - ICINGA2_IDO_MYSQL_USER=icinga2
+      - ICINGA2_IDO_MYSQL_PASS=***REDACTED***
+      - ICINGAWEB2_MYSQL_USER=icingaweb2
+      - ICINGAWEB2_MYSQL_PASS=***REDACTED***
+      - ICINGAWEB2_DIRECTOR_MYSQL_USER=director
+      - ICINGAWEB2_DIRECTOR_MYSQL_PASS=***REDACTED***
+      - ICINGA2_FEATURE_DIRECTOR_PASS=***REDACTED***
     volumes:
       - icinga-data:/var/lib/icinga2
       - icinga-mysql:/var/lib/mysql
       - icinga-web:/etc/icingaweb2
+      - ./icinga-module-ai:/usr/share/icingaweb2/modules/ai
     networks:
       - icinga-net
     depends_on:
       - opensearch
+
+  ai-backend:
+    build: 
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: ai-backend
+    environment:
+      - ICINGA_API_URL=https://icinga-lab:5665/v1
+      - ICINGA_API_PASSWORD=***REDACTED***
+      - DIRECTOR_URL=http://icinga-lab/icingaweb2/director
+      - DIRECTOR_API_URL=http://icinga-lab/icingaweb2/director
+      - ES_HOST=opensearch-lab
+      - DB_HOST=icinga-lab
+      - DB_PASS=***REDACTED***
+      - SENTRY_DSN=***REDACTED-SENTRY-DSN***
+    ports:
+      - "8000:8000"
+    networks:
+      - icinga-net
+    volumes:
+      - .:/app  # Live reload during development
 
   # Isolated OpenSearch sandbox — for local testing ONLY.
   # This is NOT connected to the company's opensearch.internal instance.

@@ -8,11 +8,11 @@ from typing import List, Dict
 DATA_SOURCE = os.environ.get("DATA_SOURCE", "mysql")
 
 # MySQL Configuration
-DB_HOST = "127.0.0.1"
-DB_PORT = 3306
-DB_USER = "icinga2"
-DB_PASS = "***REDACTED***"
-DB_NAME = "icinga2idomysql"
+DB_HOST = os.environ.get("DB_HOST", "icinga-lab" if os.path.exists("/.dockerenv") else "127.0.0.1")
+DB_PORT = int(os.environ.get("DB_PORT", "3306"))
+DB_USER = os.environ.get("DB_USER", "icinga2")
+DB_PASS = os.environ.get("DB_PASS", "***REDACTED***")
+DB_NAME = os.environ.get("DB_NAME", "icinga2idomysql")
 
 def _get_connection():
     return mysql.connector.connect(

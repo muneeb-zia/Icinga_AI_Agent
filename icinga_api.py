@@ -3,16 +3,23 @@ import urllib3
 import json
 from typing import Optional, Dict, Any
 
+import os
+
 # Disable SSL warnings since we are on localhost
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-ICINGA_API_URL = "https://localhost:5665/v1"
-AUTH = ("root", "d2d6c11edd38d4c1")
+ICINGA_API_URL = os.environ.get("ICINGA_API_URL", "https://icinga-lab:5665/v1" if os.path.exists("/.dockerenv") else "https://localhost:5665/v1")
+AUTH = ("root", os.environ.get("ICINGA_API_PASSWORD", "***REDACTED***"))
 
 def _make_request(endpoint: str, method: str = "GET", params: Optional[Dict] = None, data: Optional[Dict] = None) -> Any:
     """Helper method to make requests to the Icinga API."""
     url = f"{ICINGA_API_URL}/{endpoint}"
     headers = {'Accept': 'application/json'}
+    
+    # Icinga 2 requires this header on POST requests used as filtered GET queries.
+    # Without it, POST returns 400 "Missing both 'attrs' and 'restore_attrs'".
+    if method == "POST" and data is not None and 'attrs' not in data:
+        headers['X-HTTP-Method-Override'] = 'GET'
     
     try:
         response = requests.request(
@@ -152,10 +159,20 @@ def get_service_details(hostname: str, service_name: str) -> Dict:
     Use Case 6: Service-Level Deep Dive
     Example: "What is the status of the SSH service on db-master?"
     """
-    # Icinga uses "hostname!servicename" format for service objects
-    data = _make_request(f"objects/services/{hostname}!{service_name}")
+    # Use POST filter — handles service names with spaces/slashes (e.g. "disk /")
+    # The URL path format `host!service` breaks for special characters
+    payload = {
+        "filter": f'host.name=="{hostname}" && service.name=="{service_name}"'
+    }
+    data = _make_request("objects/services", method="POST", data=payload)
+    
     if "error" in data:
-        return data
+        # Fallback: try URL-encoding safe path format for simple names
+        import urllib.parse
+        safe_svc = urllib.parse.quote(service_name, safe="")
+        data = _make_request(f"objects/services/{hostname}!{safe_svc}")
+        if "error" in data:
+            return data
     
     if not data.get('results'):
         return {"error": f"Service '{service_name}' on host '{hostname}' not found."}

@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 # Placeholder for the future real Graphite API URL
 GRAPHITE_URL = "http://localhost:8080"
-DEMO_MODE = False # Set to False when using real API
+DEMO_MODE = True # Set to True to generate mock data for demo presentation
 
 def get_historical_data(target_metric: str, from_time: str = "-24h") -> Dict[str, Any]:
     """

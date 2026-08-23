@@ -13,3 +13,6 @@ matplotlib
 opensearch-py
 paramiko
 mysql-connector-python
+fastapi
+uvicorn
+sentry-sdk[fastapi]

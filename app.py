@@ -131,7 +131,7 @@ for message in st.session_state.chat_history:
                     col1, col2 = st.columns(2)
                     with col1:
                         if st.button("✅ Yes, proceed", key=f"approve_{id(message)}"):
-                            st.session_state.pending_prompt = "SYSTEM OVERRIDE: The user has explicitly APPROVED your proposed action. You MUST now execute the action tool using the exact parameters you proposed in your previous message. Do not ask for permission again. Execute it now."
+                            st.session_state.pending_prompt = "Yes, proceed."
                             st.rerun()
                     with col2:
                         if st.button("❌ No, cancel", key=f"reject_{id(message)}"):
@@ -179,14 +179,30 @@ if not st.session_state.chat_history:
             for example in example_deep:
                 st.code(example, language=None)
 
+# --- Input Sanitization: Strip prompt injection attempts ---
+INJECTION_PATTERNS = [
+    "system override", "ignore previous instructions", "ignore your instructions",
+    "disregard your rules", "bypass safety", "you are now", "act as if",
+    "do not ask for permission", "must now execute", "execute it now"
+]
+
+def _sanitize_input(text: str) -> str:
+    """Block prompt injection attempts from reaching the agent."""
+    lower = text.lower()
+    for pattern in INJECTION_PATTERNS:
+        if pattern in lower:
+            return "No, cancel the last action."
+    return text
+
 # React to user input
 prompt = st.chat_input("Ask Icinga AI...")
 
 if "pending_prompt" in st.session_state and st.session_state.pending_prompt:
     prompt = st.session_state.pending_prompt
-    st.session_state.pending_prompt = None  # Reset it
+    st.session_state.pending_prompt = None
 
 if prompt:
+    prompt = _sanitize_input(prompt)
     # Add user message to chat history
     st.session_state.chat_history.append(HumanMessage(content=prompt))
 
@@ -194,22 +210,33 @@ if prompt:
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Display assistant response in chat message container
     with st.chat_message("assistant"):
         with st.spinner("Agent is thinking and querying Icinga..."):
             try:
-                # Invoke the agent
-                # Format chat history for the prompt
-                formatted_history = ""
-                for m in st.session_state.chat_history[:-1]:
-                    role = "User" if m.type == "human" else "Agent"
-                    formatted_history += f"{role}: {m.content}\n"
-
+                # Invoke the LangGraph agent
+                config = {"configurable": {"thread_id": "streamlit-session"}}
                 response = st.session_state.agent_executor.invoke({
-                    "input": prompt,
-                    "chat_history": formatted_history
-                })
-                output_text = response["output"]
+                    "messages": [("user", prompt)]
+                }, config)
+
+                msgs = response.get("messages", [])
+                output_text = ""
+                for msg in reversed(msgs):
+                    if hasattr(msg, "content") and not getattr(msg, "tool_calls", None):
+                        c = msg.content if isinstance(msg.content, str) else str(msg.content)
+                        if c.strip():
+                            output_text = c.strip()
+                            break
+
+                if not output_text and msgs:
+                    for msg in reversed(msgs):
+                        if type(msg).__name__ == "ToolMessage" and msg.content:
+                            output_text = f"Tool result: {msg.content}"
+                            break
+
+                if not output_text:
+                    output_text = response.get("output", "Analysis completed.")
+
                 st.markdown(output_text, unsafe_allow_html=True)
                 
                 # --- Plot Rendering ---
@@ -238,7 +265,7 @@ if prompt:
                     col1, col2 = st.columns(2)
                     with col1:
                         if st.button("✅ Yes, proceed", key="approve_latest"):
-                            st.session_state.pending_prompt = "SYSTEM OVERRIDE: The user has explicitly APPROVED your proposed action. You MUST now execute the action tool using the exact parameters you proposed in your previous message. Do not ask for permission again. Execute it now."
+                            st.session_state.pending_prompt = "Yes, proceed."
                             st.rerun()
                     with col2:
                         if st.button("❌ No, cancel", key="reject_latest"):

@@ -1,8 +1,10 @@
 from langchain_ollama import ChatOllama
+import httpx
 from langchain_core.tools import tool
-from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langgraph.prebuilt import create_react_agent
+# create_react_agent already imported from langgraph.prebuilt above as lc_create_react_agent
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
-from typing import Optional
+from typing import Optional, Any, Dict, List
 
 # Import our custom modules
 import icinga_api
@@ -15,6 +17,26 @@ import matplotlib.pyplot as plt
 import io
 import base64
 from datetime import datetime
+
+# =============================================================================
+# HELPER — Gemma sometimes passes {"param": "value"} as the raw string value
+# for single-argument tools. This unwraps it automatically.
+# =============================================================================
+import json as _json
+
+def _parse_str(value: str, key: str = None) -> str:
+    """Unwrap a JSON-encoded string if Gemma passed the whole JSON object instead of the bare string."""
+    if isinstance(value, str) and value.strip().startswith("{"):
+        try:
+            d = _json.loads(value)
+            if key and key in d:
+                return str(d[key])
+            # Return first value if only one key
+            if len(d) == 1:
+                return str(list(d.values())[0])
+        except Exception:
+            pass
+    return value
 
 # =============================================================================
 # READ TOOLS — Phase 1 (Original)
@@ -37,6 +59,7 @@ def get_all_hosts(filter_state: Optional[str] = None) -> str:
 @tool
 def get_host_details(hostname: str) -> str:
     """Retrieves specific template usage, custom variables, and performance data for a single host."""
+    hostname = _parse_str(hostname, "hostname")
     return str(icinga_api.get_host_details(hostname))
 
 @tool
@@ -45,6 +68,7 @@ def get_historical_outages(hostname: str) -> str:
     Queries the database for historical outages or crashes for a specific host.
     Use this to answer questions like 'has this host gone down recently?' or 'what is the history of this host?'
     """
+    hostname = _parse_str(hostname, "hostname")
     return str(database_api.get_historical_outages(hostname))
 
 @tool
@@ -68,9 +92,12 @@ def get_templates_and_zones() -> str:
 @tool
 def search_troubleshooting_guides(query: str) -> str:
     """
-    Searches the internal company troubleshooting documentation for solutions.
-    Use this tool when you find a CRITICAL service or DOWN host and need to provide Root Cause Analysis (RCA) or fixing steps.
+    Searches the INTERNAL COMPANY DOCUMENTATION for step-by-step fix instructions and runbooks.
+    Use this ONLY when the user asks HOW TO FIX something, wants a remediation plan, or asks 'what should I do?'.
+    DO NOT use this when the user says 'check logs', 'look at logs', or 'what do the logs say' — use search_elasticsearch_logs for that.
+    DO NOT use this when the user wants live service or host data — use get_service_details or get_host_details for that.
     """
+    query = _parse_str(query, "query")
     return knowledge_base.search_troubleshooting_guides(query)
 
 @tool
@@ -159,12 +186,22 @@ def plot_historical_metrics(query_json: str) -> str:
 # =============================================================================
 
 @tool
-def get_service_details(hostname: str, service_name: str) -> str:
+def get_service_details(query_json: str) -> str:
     """
     Retrieves the detailed status and configuration of a specific service on a specific host.
     Use this for deep-diving into a service issue — state, output, performance data, check intervals, etc.
 
+    IMPORTANT: Pass a JSON string with 'hostname' and 'service_name' keys.
+    Action Input: {"hostname": "icinga-master", "service_name": "disk /"}
     """
+    try:
+        params = _json.loads(query_json)
+        hostname = params.get("hostname") or params.get("host")
+        service_name = params.get("service_name") or params.get("service")
+        if not hostname or not service_name:
+            return "Error: Both 'hostname' and 'service_name' are required."
+    except Exception as e:
+        return f"Error parsing input JSON: {str(e)}"
     return str(icinga_api.get_service_details(hostname, service_name))
 
 @tool
@@ -174,6 +211,7 @@ def get_host_services(hostname: str) -> str:
     Use this to get a complete inventory of what's being monitored on a host.
 
     """
+    hostname = _parse_str(hostname, "hostname")
     return str(icinga_api.get_host_services(hostname))
 
 @tool
@@ -183,6 +221,8 @@ def get_notification_history(hostname: Optional[str] = None) -> str:
     Optionally filter by hostname. Use this to answer 'who was notified?' or 'what alerts were sent?'.
 
     """
+    if hostname:
+        hostname = _parse_str(hostname, "hostname")
     return str(icinga_api.get_notification_history(hostname))
 
 @tool
@@ -211,12 +251,16 @@ def get_check_statistics() -> str:
 @tool
 def search_elasticsearch_logs(keyword: str, time_range: str = "24h") -> str:
     """
-    Searches Elasticsearch for log entries matching a keyword across all Icinga indices.
-    Use this for deep investigation — searching for specific error messages, patterns, or events
-    in the historical log data stored in Elasticsearch.
-    Note: Requires VPN access to opensearch.internal:9200. Returns a fallback message if ES is not connected.
-
+    Searches the LIVE LOG DATABASE (OpenSearch/Elasticsearch) for real log entries from the monitoring system.
+    Use this when the user says 'check logs', 'look at the logs', 'what do the logs say', 'check the log history',
+    'investigate logs', or 'search logs for <keyword>'.
+    This queries actual stored log events — NOT documentation or runbooks.
+    Args:
+        keyword: the word/phrase to search for in the logs (e.g. 'disk', 'UNKNOWN', 'error', 'icinga-master')
+        time_range: how far back to search, e.g. '1h', '24h', '7d' (default: '24h')
     """
+    keyword = _parse_str(keyword, "keyword")
+    time_range = _parse_str(time_range, "time_range")
     return str(elasticsearch_api.search_logs_by_keyword(keyword, time_range))
 
 @tool
@@ -227,6 +271,8 @@ def get_host_state_timeline(hostname: str, time_range: str = "30d") -> str:
     Note: Requires VPN access to opensearch.internal:9200. Returns a fallback message if ES is not connected.
 
     """
+    hostname = _parse_str(hostname, "hostname")
+    time_range = _parse_str(time_range, "time_range")
     return str(elasticsearch_api.get_host_state_timeline(hostname, time_range))
 
 @tool
@@ -281,6 +327,7 @@ def detect_elasticsearch_log_spikes(hostname: str) -> str:
     Detects log volume anomalies (spikes) for a specific host by comparing the last 1h to the previous 24h average.
     Use this to see if a host is suddenly spamming logs or failing rapidly.
     """
+    hostname = _parse_str(hostname, "hostname")
     return str(elasticsearch_api.detect_elasticsearch_log_spikes(hostname))
 
 @tool
@@ -362,11 +409,13 @@ def acknowledge_alert(query_json: str) -> str:
     """
     ACKNOWLEDGES a problem on a host or service in Icinga.
     This stops Icinga from sending repeated notifications for this issue.
-    ⚠️ ACTION: This MODIFIES the monitoring system. Always describe what you plan to do and confirm with the user before calling this.
+    Use this IMMEDIATELY when the user says 'acknowledge', 'ack', 'mark as known', or 'stop alerts for'.
+    DO NOT call any other read tools first — ask for confirmation and then execute.
+    ⚠️ ACTION: Confirm with the user before calling.
     Args:
-        hostname: The host with the problem (e.g., 'web-01').
-        service: Optional specific service name (e.g., 'ssh'). If not given, acknowledges the host problem.
-        comment: Reason for acknowledgement.
+        hostname: The host with the problem (e.g., 'icinga-master').
+        service: Optional specific service name. If not given, acknowledges the HOST problem.
+        comment: Reason for acknowledgement (default: 'Acknowledged by AI Agent').
 
     
     Action Input: {"hostname": "name", "service": "svc", "comment": "comment"}
@@ -657,16 +706,18 @@ action_tools = [
 tools = read_tools_original + read_tools_extended + elasticsearch_tools + action_tools
 
 
-# =============================================================================
-# AGENT INITIALIZATION
-# =============================================================================
+from langgraph.checkpoint.memory import MemorySaver
 
-def create_agent(enable_actions: bool = True):
+# Default checkpointer for session persistence
+default_checkpointer = MemorySaver()
+
+def create_agent(enable_actions: bool = True, checkpointer: Optional[Any] = default_checkpointer):
     """
-    Initializes the LangChain Agent with Qwen and all Icinga tools.
+    Initializes the LangGraph ReAct Agent with Gemma/Qwen and all Icinga tools.
     
     Args:
         enable_actions: If False, action tools are excluded (read-only mode).
+        checkpointer: LangGraph checkpoint saver for conversational memory persistence.
     """
     
     # Select tools based on mode
@@ -675,92 +726,50 @@ def create_agent(enable_actions: bool = True):
     else:
         agent_tools = read_tools_original + read_tools_extended + elasticsearch_tools
         
+    _http_client = httpx.Client(
+        timeout=httpx.Timeout(
+            connect=30.0,   # connection handshake timeout
+            read=600.0,     # stream read timeout
+            write=30.0,
+            pool=10.0
+        )
+    )
     llm = ChatOllama(
         base_url="http://gpu-server.internal:11434",
         model="gemma4:e4b",
         temperature=0.0,
         timeout=600.0,
-        num_ctx=8192
+        num_ctx=8192,
+        http_client=_http_client
     )
     
-    # Define the ReAct prompt template for robust open-source model tool calling
-    template = '''You are a highly capable AI Assistant integrated with an Icinga 2 monitoring system.
-Your role is to act as an Observability and Operations Agent (AIOps). You have access to LIVE API data, HISTORICAL Database/Graphite records, and ACTION capabilities.
+    system_prompt = """You are an expert Icinga 2 AIOps Observability & Operations Assistant.
+You have access to live infrastructure monitoring tools:
+1. READ TOOLS: Query live Icinga 2 hosts, services, templates, downtime status, check latency.
+2. HISTORICAL DATA: Query MySQL IDO database for historical outages and Graphite for time-series metrics.
+3. LOG ANALYSIS: Search OpenSearch/Elasticsearch live logs, cluster health, and error aggregations.
+4. RAG KNOWLEDGE BASE: Use `search_troubleshooting_guides` to perform Root Cause Analysis (RCA) and retrieve step-by-step remediation runbooks whenever a problem or error is detected.
+5. ACTION CAPABILITIES (⚠️ HUMAN-IN-THE-LOOP SAFETY):
+   - You can acknowledge alerts, schedule downtimes, add comments, force rechecks, and configure Icinga Director.
+   - When the user asks you to execute an action (e.g. acknowledge an alert or schedule downtime), summarize the exact action and parameters you plan to use, and ask the user for explicit confirmation before executing.
+   - When the user confirms ("yes", "proceed", "go ahead"), immediately execute the action tool.
 
-## READ Capabilities (Safe — no confirmation needed):
-- Use live API tools for system health, hosts, alerts, services.
-- Use DB tools for historical outages/downtimes.
-- Use Elasticsearch tools for log analysis, cluster health, index info.
+FORMATTING RULES:
+- Always format your responses in clean Markdown (use bullet points, bold text, and code blocks for commands).
+- Keep explanations structured, professional, and actionable."""
 
-## ACTION Capabilities (⚠️ REQUIRES STRICT CONFIRMATION):
-You can MODIFY the monitoring system (Director API and Icinga API).
-- You can create Host Groups, Host Templates, Hosts, Service Groups, Service Templates, Services, Service Sets, and Check Commands.
-- After creating configuration objects via Director API, you MUST call `deploy_director_config` to activate them.
-
-### 🛡️ STRICT SAFETY & INTERACTIVITY RULES:
-1. When asked to create a configuration object (like a host, command, or template), DO NOT call any unrelated tools first.
-2. You MUST STRICTLY ASK the user for required fields if they are missing. Do NOT guess strict requirements.
-3. For optional fields, you MUST TELL the user the default values you plan to use.
-4. You MUST ask for explicit APPROVAL from the user before executing ANY action tool.
-   Example response: "I will create a check command 'check_custom_ping' using the command 'ping'. Shall I proceed?"
-5. When the user says "Yes, proceed" or "Yes", you MUST execute the corresponding action tool immediately using the parameters you previously collected. Do NOT ask for permission again.
-6. After executing, report the result clearly.
-
-📋 DIRECTOR CONFIGURATION WORKFLOW:
-When creating objects that depend on templates (like hosts or services), ensure the template exists or create it first.
-'''
-
-    from langchain_core.prompts import PromptTemplate
-    from langchain.agents import create_react_agent
-
-    # Standard ReAct prompt
-    react_template = '''You are a highly capable AI Assistant integrated with an Icinga 2 monitoring system.
-Your role is to act as an Observability and Operations Agent (AIOps).
-
-### 🛡️ STRICT SAFETY & INTERACTIVITY RULES:
-1. When asked to create a configuration object (like a host, command, or template), DO NOT call any unrelated tools first.
-2. You MUST STRICTLY ASK the user for required fields if they are missing.
-3. You MUST ask for explicit APPROVAL from the user before executing ANY action tool.
-   If you need to ask for approval, DO NOT call a tool! Just output your question to the user in the Final Answer.
-4. When the user says "Yes, proceed", you MUST execute the corresponding action tool.
-
-You have access to the following tools:
-{tools}
-
-Use the following strict format for your responses:
-
-Question: the input question you must answer (or the user's approval)
-Thought: you should always think about what to do.
-Action: the action to take, should be one of [{tool_names}]
-Action Input: a valid JSON object string
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer or question to the user
-
-Previous Conversation History:
-{chat_history}
-
-Question: {input}
-{agent_scratchpad}'''
-
-    prompt = PromptTemplate.from_template(react_template)
-    
-    # Create the ReAct agent
-    agent = create_react_agent(llm, agent_tools, prompt)
-    
-    # Create the Agent Executor
-    agent_executor = AgentExecutor(
-        agent=agent, 
-        tools=agent_tools, 
-        verbose=True, 
-        handle_parsing_errors="Please use the exact format: 'Thought: ... \nAction: ... \nAction Input: ...' or output 'Final Answer: ...' to talk to the user.",
-        max_iterations=10
+    agent_executor = create_react_agent(
+        llm, 
+        agent_tools, 
+        prompt=system_prompt,
+        checkpointer=checkpointer
     )
-    
     return agent_executor
 
 if __name__ == "__main__":
+    import sys
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     print("Testing Agent Initialization...")
     print(f"  Total tools registered: {len(tools)}")
     print(f"  Read tools (original): {len(read_tools_original)}")
@@ -770,10 +779,4 @@ if __name__ == "__main__":
     print()
     
     executor = create_agent()
-    print("✅ Agent Executor created successfully with all tools.")
-    
-    # Quick test
-    print("\nTesting a read query...")
-    response = executor.invoke({"input": "Are there any recent scheduled downtimes in the history?"})
-    print("\n--- QWEN RESPONSE ---")
-    print(response["output"])
+    print("Agent Executor created successfully with all tools and MemorySaver.")

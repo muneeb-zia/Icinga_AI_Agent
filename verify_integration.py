@@ -8,7 +8,7 @@ import urllib3
 urllib3.disable_warnings()
 
 ICINGA_URL = "https://localhost:5665/v1"
-ICINGA_AUTH = ("root", "d2d6c11edd38d4c1")
+ICINGA_AUTH = ("root", "***REDACTED***")
 DIRECTOR_URL = "http://localhost/icingaweb2/director"
 DIRECTOR_AUTH = ("admin", "admin123")
 OS_URL = "http://localhost:9200"
