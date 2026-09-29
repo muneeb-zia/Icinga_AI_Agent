@@ -16,3 +16,11 @@ mysql-connector-python
 fastapi
 uvicorn
 sentry-sdk[fastapi]
+python-dotenv
+langgraph
+langchain-groq
+numpy
+openpyxl
+reportlab
+python-docx
+httpx

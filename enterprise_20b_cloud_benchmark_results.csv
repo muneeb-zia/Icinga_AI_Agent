@@ -1,0 +1,5 @@
+Model Name,Parameters (B),Provider,TTFT (ms),Gen Throughput (tok/s),KV-Cache Speedup (%),Tool Schema Match (%),Context 4k Total Latency (ms),Concurrency 4-User Eff TPS
+GPT-OSS 20B,20.9,Groq LPU Cloud (Ultra-Fast Inference),549.75,140.96,0.0,100.0,629.52,19.13
+Qwen 3.6 27B,27.0,Groq LPU Cloud (Enterprise Tier),106.36,298.17,0.0,100.0,14747.56,18.7
+GPT-OSS 120B,120.0,Groq LPU Cloud (Frontier Heavyweight),127.57,261.87,72.01472258205516,100.0,4022.36,21.7
+Qwen 2.5 Coder 32B,32.5,HuggingFace Dedicated Serverless GPU,2062.86,24.21,3.844561489081133,100.0,288.12,0.0

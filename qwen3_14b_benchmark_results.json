@@ -1,0 +1,82 @@
+{
+  "model": "qwen3:14b",
+  "parameters": "14.8B",
+  "quantization": "Q4_K_M",
+  "hardware_tier": "Tier 2: Company Enterprise Server (16GB VRAM GPU)",
+  "throughput": {
+    "success": true,
+    "ttft_ms": 647.88,
+    "generation_tps": 79.52,
+    "prompt_eval_tps": 3200.77,
+    "total_latency_ms": 3846.9,
+    "tokens_generated": 256,
+    "prompt_tokens": 273,
+    "response_text": ""
+  },
+  "kv_caching": {
+    "cold_ttft_ms": 603.81,
+    "warm_ttft_ms": 453.67,
+    "speedup_pct": 24.87
+  },
+  "tool_precision": {
+    "json_pct": 60.0,
+    "tool_selection_pct": 60.0,
+    "schema_precision_pct": 60.0
+  },
+  "context_scaling": [
+    {
+      "context_label": "1k tokens",
+      "approx_tokens": 694,
+      "ttft_ms": 571.25,
+      "generation_tps": 78.63,
+      "total_latency_ms": 3810.95
+    },
+    {
+      "context_label": "2k tokens",
+      "approx_tokens": 1284,
+      "ttft_ms": 630.2,
+      "generation_tps": 77.7,
+      "total_latency_ms": 3924.05
+    },
+    {
+      "context_label": "4k tokens",
+      "approx_tokens": 2464,
+      "ttft_ms": 836.82,
+      "generation_tps": 75.87,
+      "total_latency_ms": 4197.9
+    },
+    {
+      "context_label": "8k tokens",
+      "approx_tokens": 2050,
+      "ttft_ms": 1491.71,
+      "generation_tps": 76.61,
+      "total_latency_ms": 4839.67
+    }
+  ],
+  "concurrency": {
+    "1_users": {
+      "concurrency": 1,
+      "p50_latency_ms": 4059.28,
+      "p90_latency_ms": 4059.28,
+      "p99_latency_ms": 4059.28,
+      "total_tokens": 256,
+      "effective_tps": 63.01
+    },
+    "2_users": {
+      "concurrency": 2,
+      "p50_latency_ms": 7048.41,
+      "p90_latency_ms": 7048.41,
+      "p99_latency_ms": 7048.41,
+      "total_tokens": 512,
+      "effective_tps": 72.58
+    },
+    "4_users": {
+      "concurrency": 4,
+      "p50_latency_ms": 10260.08,
+      "p90_latency_ms": 13516.84,
+      "p99_latency_ms": 13516.84,
+      "total_tokens": 1024,
+      "effective_tps": 75.75
+    }
+  }
+}

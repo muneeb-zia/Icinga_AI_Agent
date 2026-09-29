@@ -1,19 +1,23 @@
+import sys
+import os
+import json
+import asyncio
+import dotenv
+dotenv.load_dotenv()
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any, AsyncGenerator
-import sys
-import os
-import json
-import asyncio
+import httpx
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 # Ensure parent directory is in sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from agent import create_agent, tools
+from agent import create_agent, tools, resolve_text_tool_calls, format_agent_response
 import icinga_api
 import elasticsearch_api
 import graphite_api
@@ -61,15 +65,150 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-print("Initializing LangGraph Agent with MemorySaver Checkpointer...")
-agent_executor = create_agent(enable_actions=True)
+# =============================================================================
+# DYNAMIC LLM CONFIGURATION & COMPANY GPU STATE
+# =============================================================================
+DEFAULT_GPU_URL = os.environ.get("COMPANY_GPU_URL") or os.environ.get("OLLAMA_BASE_URL") or "http://gpu-server.internal:11434"
+DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL") or "gpt-oss:20b"
+
+active_llm_config = {
+    "provider": "ollama",
+    "model": DEFAULT_MODEL,
+    "base_url": DEFAULT_GPU_URL,
+    "server_label": "🏢 Company GPU"
+}
+
+AVAILABLE_MODELS = [
+    {
+        "id": "gpt-oss:20b",
+        "name": "GPT-OSS 20B (Default)",
+        "badge": "⚡ Fast / 114 tok/s",
+        "server": "🏢 Company GPU",
+        "base_url": "http://gpu-server.internal:11434",
+        "description": "20.9B params, MXFP4, 100% tool calling accuracy"
+    },
+    {
+        "id": "qwen3:14b",
+        "name": "Qwen3 14B",
+        "badge": "🧠 Deep Reasoning",
+        "server": "🏢 Company GPU",
+        "base_url": "http://gpu-server.internal:11434",
+        "description": "14B params, deep troubleshooting & root cause reasoning"
+    },
+    {
+        "id": "gemma4:12b",
+        "name": "Gemma4 12B",
+        "badge": "🎯 High Precision",
+        "server": "🏢 Company GPU",
+        "base_url": "http://gpu-server.internal:11434",
+        "description": "12B params, structured JSON & metric analytics"
+    },
+    {
+        "id": "gemma4:e4b",
+        "name": "Gemma4 4B",
+        "badge": "🚀 Edge Fast",
+        "server": "🏢 Company GPU",
+        "base_url": "http://gpu-server.internal:11434",
+        "description": "4B params, ultra-low latency alerts triage"
+    },
+    {
+        "id": "llama3.1:8b-instruct-q4_K_M",
+        "name": "Llama 3.1 8B Instruct",
+        "badge": "🦙 Standard NOC",
+        "server": "🏢 Company GPU",
+        "base_url": "http://gpu-server.internal:11434",
+        "description": "8B params, standard operations & NOC runbooks"
+    },
+    {
+        "id": "llama3.1:8b",
+        "name": "Llama 3.1 8B (Localhost Fallback)",
+        "badge": "💻 Local Air-Gapped",
+        "server": "💻 Local Host",
+        "base_url": "http://localhost:11434",
+        "description": "8B params, local standalone fallback when off-VPN"
+    }
+]
+
+print(f"Initializing LangGraph Agent ({active_llm_config['model']} via {active_llm_config['server_label']})...")
+agent_executor = create_agent(
+    enable_actions=True,
+    provider=active_llm_config["provider"],
+    model_name=active_llm_config["model"],
+    base_url=active_llm_config["base_url"]
+)
 print("LangGraph Agent Ready.")
+
+
+class SwitchModelRequest(BaseModel):
+    model: str
+    base_url: Optional[str] = None
+    provider: Optional[str] = "ollama"
+
+
+@app.get("/api/models")
+async def list_models():
+    """Returns available Company GPU and local models, plus live GPU connectivity status."""
+    gpu_online = False
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{DEFAULT_GPU_URL}/api/tags")
+            if resp.status_code == 200:
+                gpu_online = True
+    except Exception:
+        gpu_online = False
+
+    return {
+        "active_model": active_llm_config["model"],
+        "active_base_url": active_llm_config["base_url"],
+        "active_provider": active_llm_config["provider"],
+        "active_server_label": active_llm_config["server_label"],
+        "gpu_connected": gpu_online,
+        "company_gpu_url": DEFAULT_GPU_URL,
+        "models": AVAILABLE_MODELS
+    }
+
+
+@app.post("/api/model")
+async def switch_model(req: SwitchModelRequest):
+    """Hot-swaps the active LLM on the company GPU or local Ollama without restarting the server."""
+    global agent_executor, active_llm_config
+    try:
+        model_name = req.model.strip()
+        base_url = (req.base_url or ("http://localhost:11434" if "localhost" in model_name else DEFAULT_GPU_URL)).strip()
+        provider = (req.provider or "ollama").strip()
+
+        server_label = "🏢 Company GPU (gpu-server.internal)" if "gpu-server.internal" in base_url else "💻 Local Ollama"
+        print(f"[Model Switch] Switching active agent to model '{model_name}' on {server_label} ({base_url})...")
+
+        new_agent = create_agent(
+            enable_actions=True,
+            provider=provider,
+            model_name=model_name,
+            base_url=base_url
+        )
+        agent_executor = new_agent
+        active_llm_config["model"] = model_name
+        active_llm_config["base_url"] = base_url
+        active_llm_config["provider"] = provider
+        active_llm_config["server_label"] = server_label
+
+        return {
+            "status": "success",
+            "message": f"Successfully switched to {model_name} on {server_label}",
+            "active_model": model_name,
+            "active_base_url": base_url,
+            "server_label": server_label
+        }
+    except Exception as e:
+        print(f"Failed to switch model: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to switch model: {str(e)}")
 
 
 class QueryRequest(BaseModel):
     query: str
     session_id: Optional[str] = "default"
     context: Optional[Dict[str, Any]] = None
+    username: Optional[str] = None
 
 
 class QueryResponse(BaseModel):
@@ -77,13 +216,32 @@ class QueryResponse(BaseModel):
     session_id: str
 
 
-def _format_query(query: str, context: Optional[Dict[str, Any]]) -> str:
+def _format_query(query: str, context: Optional[Dict[str, Any]], req_user: Optional[str] = None) -> str:
     full_query = query.strip()
+    user = req_user or (context.get("username") if context else None) or "admin"
+    os.environ["CURRENT_ICINGA_USER"] = user
+
+    try:
+        from rbac_manager import RBACManager
+        rbac = RBACManager()
+        user_obj = rbac.get_user(user)
+        role_name = user_obj.role.name if user_obj else "L1_READONLY"
+        role_tier = user_obj.role.value if user_obj else 1
+    except Exception:
+        role_name = "L4_PLATFORM_ADMIN" if user == "admin" else "L1_READONLY"
+        role_tier = 4 if user == "admin" else 1
+
+    user_ctx = f"Authenticated Operator: {user} | Role: {role_name} (Tier {role_tier})"
+
     if context:
-        valid_ctx = {k: v for k, v in context.items() if v and str(v).lower() != "unknown" and str(v).strip() != ""}
+        valid_ctx = {k: v for k, v in context.items() if v and str(v).lower() != "unknown" and str(v).strip() != "" and k != "username"}
         if valid_ctx:
             context_str = ", ".join([f"{k}: {v}" for k, v in valid_ctx.items()])
-            full_query = f"[Active Context: {context_str}]\n{full_query}"
+            full_query = f"[{user_ctx} | Context: {context_str}]\n{full_query}"
+        else:
+            full_query = f"[{user_ctx}]\n{full_query}"
+    else:
+        full_query = f"[{user_ctx}]\n{full_query}"
     return full_query
 
 
@@ -94,7 +252,7 @@ def _format_query(query: str, context: Optional[Dict[str, Any]]) -> str:
 @app.post("/api/analyze", response_model=QueryResponse)
 async def analyze_query(request: QueryRequest):
     try:
-        full_query = _format_query(request.query, request.context)
+        full_query = _format_query(request.query, request.context, request.username)
         session_id = request.session_id or "default"
 
         config = {"configurable": {"thread_id": session_id}}
@@ -106,25 +264,7 @@ async def analyze_query(request: QueryRequest):
             config
         )
 
-        msgs = response.get("messages", [])
-        output_text = ""
-
-        # Retrieve final AIMessage content
-        for msg in reversed(msgs):
-            if hasattr(msg, "content") and not getattr(msg, "tool_calls", None):
-                c = msg.content if isinstance(msg.content, str) else str(msg.content)
-                if c.strip():
-                    output_text = c.strip()
-                    break
-
-        if not output_text and msgs:
-            for msg in reversed(msgs):
-                if type(msg).__name__ == "ToolMessage" and msg.content:
-                    output_text = f"Tool result: {msg.content}"
-                    break
-
-        if not output_text:
-            output_text = "I analyzed the request with the monitoring tools, but no text response was returned."
+        output_text = format_agent_response(response)
 
         return QueryResponse(
             response=output_text,
@@ -142,7 +282,7 @@ async def analyze_query(request: QueryRequest):
 
 async def event_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
     try:
-        full_query = _format_query(request.query, request.context)
+        full_query = _format_query(request.query, request.context, request.username)
         session_id = request.session_id or "default"
         config = {"configurable": {"thread_id": session_id}}
 
@@ -163,7 +303,13 @@ async def event_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
             "force_recheck": "🔄 Forcing immediate check execution...",
             "add_host_comment": "📝 Adding operational comment...",
             "plot_historical_metrics": "📈 Rendering metric graph...",
-            "plot_elasticsearch_log_volume": "📊 Plotting log volume trend..."
+            "plot_elasticsearch_log_volume": "📊 Plotting log volume trend...",
+            "auto_generate_bpm_tree": "🌲 Auto-building Business Process DAG & evaluating quorum...",
+            "generate_custom_sla_report": "📊 Generating Executive SLA Report (PDF & Excel)...",
+            "email_sla_report": "📨 Dispatching Executive SLA Report email with PDF & Excel to client...",
+            "route_smart_notification": "📨 Routing context-aware notification...",
+            "send_noc_shift_handover": "📋 Compiling 24/7 NOC Shift Handover briefing...",
+            "verify_user_rbac_permission": "🛡️ Verifying RBAC tool-gating security clearance..."
         }
 
         accumulated_text = ""
@@ -185,6 +331,22 @@ async def event_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
                 elif kind == "on_tool_end":
                     tool_name = event.get("name", "Tool")
                     yield f"event: tool_end\ndata: {json.dumps({'tool': tool_name, 'message': f'Completed {tool_name}'})}\n\n"
+                    
+                    # Stream rich tool output (tables, charts, DAGs) directly to the client
+                    out_obj = event.get("data", {}).get("output")
+                    tool_text = ""
+                    if hasattr(out_obj, "content"):
+                        tool_text = str(out_obj.content).strip()
+                    elif isinstance(out_obj, str):
+                        tool_text = out_obj.strip()
+                    elif isinstance(out_obj, dict):
+                        tool_text = json.dumps(out_obj, indent=2)
+
+                    if tool_text and not tool_text.startswith("Error"):
+                        payload = f"\n\n{tool_text}\n\n"
+                        accumulated_text += payload
+                        stream_worked = True
+                        yield f"event: token\ndata: {json.dumps({'token': payload})}\n\n"
 
                 elif kind == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
@@ -203,22 +365,7 @@ async def event_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
                 {"messages": [("user", full_query)]},
                 config
             )
-            msgs = response.get("messages", [])
-            for msg in reversed(msgs):
-                if hasattr(msg, "content") and not getattr(msg, "tool_calls", None):
-                    c = msg.content if isinstance(msg.content, str) else str(msg.content)
-                    if c.strip():
-                        accumulated_text = c.strip()
-                        break
-
-            if not accumulated_text and msgs:
-                for msg in reversed(msgs):
-                    if type(msg).__name__ == "ToolMessage" and msg.content:
-                        accumulated_text = f"Tool result: {msg.content}"
-                        break
-
-            if not accumulated_text:
-                accumulated_text = "I completed the monitoring analysis."
+            accumulated_text = format_agent_response(response)
 
             # Stream words with slight typing cadence
             words = accumulated_text.split(" ")

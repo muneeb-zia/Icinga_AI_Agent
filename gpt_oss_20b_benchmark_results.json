@@ -1,0 +1,83 @@
+{
+  "model": "gpt-oss:20b",
+  "parameters": "20.9B",
+  "quantization": "MXFP4",
+  "context_length_limit": 131072,
+  "hardware_tier": "Tier 2: Company Enterprise Server (16GB VRAM GPU)",
+  "throughput": {
+    "success": true,
+    "ttft_ms": 9818.33,
+    "generation_tps": 119.95,
+    "prompt_eval_tps": 816.78,
+    "total_latency_ms": 11865.01,
+    "tokens_generated": 256,
+    "prompt_tokens": 326,
+    "response_text": "{\"tool_name\":\"dispatch_teams_notification\",\"parameters\":{\"team\":\"Ops\",\"severity\":\"CRITICAL\",\"message\":\"Root cause likely max_connections reached or thread pool saturation. Immediate diagnostic steps: 1) Query MySQL variables (max_connections, thread_cache_size, innodb_thread_concurrency) to confirm limits and current usage. 2) Inspect the processlist and slow query log for long\u2011running queries or connection leaks. 3) Review application logs and connection"
+  },
+  "kv_caching": {
+    "cold_ttft_ms": 990.52,
+    "warm_ttft_ms": 1026.55,
+    "speedup_pct": 0.0
+  },
+  "tool_precision": {
+    "json_pct": 100.0,
+    "tool_selection_pct": 100.0,
+    "schema_precision_pct": 100.0
+  },
+  "context_scaling": [
+    {
+      "context_label": "1k tokens",
+      "approx_tokens": 649,
+      "ttft_ms": 1060.74,
+      "generation_tps": 120.97,
+      "total_latency_ms": 3066.92
+    },
+    {
+      "context_label": "2k tokens",
+      "approx_tokens": 1109,
+      "ttft_ms": 1011.33,
+      "generation_tps": 120.03,
+      "total_latency_ms": 3141.32
+    },
+    {
+      "context_label": "4k tokens",
+      "approx_tokens": 2029,
+      "ttft_ms": 1191.73,
+      "generation_tps": 120.42,
+      "total_latency_ms": 3216.6
+    },
+    {
+      "context_label": "8k tokens",
+      "approx_tokens": 3961,
+      "ttft_ms": 1174.11,
+      "generation_tps": 118.6,
+      "total_latency_ms": 2327.59
+    }
+  ],
+  "concurrency": {
+    "1_users": {
+      "concurrency": 1,
+      "p50_latency_ms": 2932.57,
+      "p90_latency_ms": 2932.57,
+      "p99_latency_ms": 2932.57,
+      "total_tokens": 226,
+      "effective_tps": 76.81
+    },
+    "2_users": {
+      "concurrency": 2,
+      "p50_latency_ms": 5328.56,
+      "p90_latency_ms": 5328.56,
+      "p99_latency_ms": 5328.56,
+      "total_tokens": 512,
+      "effective_tps": 95.94
+    },
+    "4_users": {
+      "concurrency": 4,
+      "p50_latency_ms": 7425.58,
+      "p90_latency_ms": 9602.49,
+      "p99_latency_ms": 9602.49,
+      "total_tokens": 1024,
+      "effective_tps": 106.63
+    }
+  }
+}

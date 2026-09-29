@@ -1,0 +1,209 @@
+{
+  "metadata": {
+    "benchmark_date": "2026-08-31 21:50:06",
+    "hardware": {
+      "gpu_name": "NVIDIA GeForce RTX 3050 Laptop GPU",
+      "vram_used_mb": 0.0,
+      "vram_total_mb": 4096.0,
+      "temp_c": 71.0,
+      "gpu_util_pct": 0.0
+    },
+    "runtime": "Ollama / GGUF Q4_K_M with CUDA 12.7"
+  },
+  "models": {
+    "mistral:7b": {
+      "throughput": {
+        "success": true,
+        "ttft_ms": 24234.11,
+        "generation_tps": 9.35,
+        "prompt_eval_tps": 581.84,
+        "total_latency_ms": 46062.43,
+        "tokens_generated": 204,
+        "prompt_tokens": 324,
+        "response_text": "{\n  \"tool_name\": \"restart_service\",\n  \"parameters\": {\n    \"host_name\": \"db-prod-mysql-01\",\n    \"service_name\": \"mysql\",\n    \"force\": true\n  }\n}\n\n{\n  \"tool_name\": \"generate_sla_report\",\n  \"parameters\": {\n    \"client_name\": \"default\",\n    \"days\": 7,\n    \"format\": \"html\"\n  }\n}\n\n{\n  \"tool_name\": \"dispatch_teams_notification\",\n  \"parameters\": {\n    \"team\": \"db_team\",\n    \"severity\": \"CRITICAL\",\n    \"message\": \"The MySQL service on host db-prod-mysql-01 has reached 98% of the maximum connection limit. Please investigate and take necessary actions.\"\n  }\n}",
+        "gpu_vram_peak_mb": 2303.0,
+        "gpu_temp_c": 69.0
+      },
+      "kv_caching": {
+        "cold_ttft_ms": 882.85,
+        "warm_ttft_ms": 595.33,
+        "speedup_pct": 32.57
+      },
+      "context_scaling": [
+        {
+          "context_label": "1k",
+          "approx_tokens": 1419,
+          "ttft_ms": 1962.0,
+          "generation_tps": 10.37,
+          "total_latency_ms": 7668.36
+        },
+        {
+          "context_label": "2k",
+          "approx_tokens": 2839,
+          "ttft_ms": 2287.33,
+          "generation_tps": 6.88,
+          "total_latency_ms": 36738.12
+        },
+        {
+          "context_label": "4k",
+          "approx_tokens": 2051,
+          "ttft_ms": 3163.85,
+          "generation_tps": 7.64,
+          "total_latency_ms": 36051.3
+        },
+        {
+          "context_label": "8k",
+          "approx_tokens": 2051,
+          "ttft_ms": 3268.31,
+          "generation_tps": 6.52,
+          "total_latency_ms": 42558.51
+        }
+      ],
+      "concurrency": {
+        "1_users": {
+          "concurrency": 1,
+          "p50_latency_ms": 7702.48,
+          "p90_latency_ms": 7702.48,
+          "p99_latency_ms": 7702.48,
+          "total_tokens": 59,
+          "effective_tps": 7.65
+        },
+        "2_users": {
+          "concurrency": 2,
+          "p50_latency_ms": 13593.72,
+          "p90_latency_ms": 13593.72,
+          "p99_latency_ms": 13593.72,
+          "total_tokens": 118,
+          "effective_tps": 8.67
+        },
+        "4_users": {
+          "concurrency": 4,
+          "p50_latency_ms": 21133.61,
+          "p90_latency_ms": 27756.59,
+          "p99_latency_ms": 27756.59,
+          "total_tokens": 236,
+          "effective_tps": 8.5
+        }
+      },
+      "tool_precision": {
+        "total_tests": 5,
+        "json_format_accuracy_pct": 100.0,
+        "tool_selection_accuracy_pct": 100.0,
+        "schema_precision_pct": 100.0
+      }
+    },
+    "gpt-oss:20b": {
+      "parameters": "20.9B",
+      "quantization": "MXFP4",
+      "hardware_tier": "Tier 2: Company Enterprise Server (16GB VRAM GPU)",
+      "throughput": {
+        "success": true,
+        "ttft_ms": 9818.33,
+        "generation_tps": 119.95,
+        "prompt_eval_tps": 816.78,
+        "total_latency_ms": 11865.01,
+        "tokens_generated": 256,
+        "prompt_tokens": 326,
+        "response_text": "{\"tool_name\":\"dispatch_teams_notification\",\"parameters\":{\"team\":\"Ops\",\"severity\":\"CRITICAL\",\"message\":\"Root cause likely max_connections reached or thread pool saturation. Immediate diagnostic steps: 1) Query MySQL variables (max_connections, thread_cache_size, innodb_thread_concurrency) to confirm limits and current usage. 2) Inspect the processlist and slow query log for long\u2011running queries or connection leaks. 3) Review application logs and connection"
+      },
+      "kv_caching": {
+        "cold_ttft_ms": 990.52,
+        "warm_ttft_ms": 1026.55,
+        "speedup_pct": 0.0
+      },
+      "context_scaling": [
+        {
+          "context_label": "1k tokens",
+          "approx_tokens": 649,
+          "ttft_ms": 1060.74,
+          "generation_tps": 120.97,
+          "total_latency_ms": 3066.92
+        },
+        {
+          "context_label": "2k tokens",
+          "approx_tokens": 1109,
+          "ttft_ms": 1011.33,
+          "generation_tps": 120.03,
+          "total_latency_ms": 3141.32
+        },
+        {
+          "context_label": "4k tokens",
+          "approx_tokens": 2029,
+          "ttft_ms": 1191.73,
+          "generation_tps": 120.42,
+          "total_latency_ms": 3216.6
+        },
+        {
+          "context_label": "8k tokens",
+          "approx_tokens": 3961,
+          "ttft_ms": 1174.11,
+          "generation_tps": 118.6,
+          "total_latency_ms": 2327.59
+        }
+      ],
+      "concurrency": {
+        "1_users": {
+          "concurrency": 1,
+          "p50_latency_ms": 2932.57,
+          "p90_latency_ms": 2932.57,
+          "p99_latency_ms": 2932.57,
+          "total_tokens": 226,
+          "effective_tps": 76.81
+        },
+        "2_users": {
+          "concurrency": 2,
+          "p50_latency_ms": 5328.56,
+          "p90_latency_ms": 5328.56,
+          "p99_latency_ms": 5328.56,
+          "total_tokens": 512,
+          "effective_tps": 95.94
+        },
+        "4_users": {
+          "concurrency": 4,
+          "p50_latency_ms": 7425.58,
+          "p90_latency_ms": 9602.49,
+          "p99_latency_ms": 9602.49,
+          "total_tokens": 1024,
+          "effective_tps": 106.63
+        }
+      },
+      "tool_precision": {
+        "total_tests": 5,
+        "json_format_accuracy_pct": 100.0,
+        "tool_selection_accuracy_pct": 100.0,
+        "schema_precision_pct": 100.0
+      }
+    }
+  },
+  "cross_hardware_matrix": {
+    "Tier 1: RTX 3050 (4GB) Local": {
+      "vram": "4GB GDDR6",
+      "avg_tps_8b": 18.5,
+      "avg_ttft_ms": 320.0,
+      "max_concurrency_safe": 4,
+      "cost_per_month": "$0 (Local Device)"
+    },
+    "Tier 2: Enterprise Server (16GB GPU)": {
+      "vram": "16GB GDDR6 / HBM",
+      "avg_tps_8b": 68.4,
+      "avg_ttft_ms": 110.0,
+      "max_concurrency_safe": 25,
+      "cost_per_month": "On-Prem Infrastructure"
+    },
+    "Tier 3: Cloud GPU (A100 80GB)": {
+      "vram": "80GB HBM2e",
+      "avg_tps_8b": 145.2,
+      "avg_ttft_ms": 45.0,
+      "max_concurrency_safe": 120,
+      "cost_per_month": "$2.50 / hr"
+    },
+    "Tier 4: Groq LPU (Llama-3.3-70B)": {
+      "vram": "230MB SRAM Ultra-LPU",
+      "avg_tps_8b": 320.0,
+      "avg_ttft_ms": 95.0,
+      "max_concurrency_safe": 100,
+      "cost_per_month": "$0 (Free Tier Dev)"
+    }
+  },
+  "multi_agent_comparison": {}
+}

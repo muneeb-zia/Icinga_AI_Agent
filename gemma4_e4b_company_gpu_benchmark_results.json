@@ -1,0 +1,82 @@
+{
+  "model": "gemma4:e4b",
+  "parameters": "8.0B (Gemma-4 architecture)",
+  "quantization": "Q4 / E4B",
+  "hardware_tier": "Tier 2: Company Enterprise Server (16GB VRAM GPU)",
+  "throughput": {
+    "success": true,
+    "ttft_ms": 4004.58,
+    "generation_tps": 94.73,
+    "prompt_eval_tps": 4306.84,
+    "total_latency_ms": 4004.58,
+    "tokens_generated": 256,
+    "prompt_tokens": 307,
+    "response_text": ""
+  },
+  "kv_caching": {
+    "cold_ttft_ms": 3625.97,
+    "warm_ttft_ms": 1107.54,
+    "speedup_pct": 69.5
+  },
+  "tool_precision": {
+    "json_pct": 100.0,
+    "tool_selection_pct": 100.0,
+    "schema_precision_pct": 100.0
+  },
+  "context_scaling": [
+    {
+      "context_label": "1k tokens",
+      "approx_tokens": 855,
+      "ttft_ms": 3873.07,
+      "generation_tps": 95.73,
+      "total_latency_ms": 3873.07
+    },
+    {
+      "context_label": "2k tokens",
+      "approx_tokens": 1755,
+      "ttft_ms": 3698.46,
+      "generation_tps": 101.36,
+      "total_latency_ms": 3698.46
+    },
+    {
+      "context_label": "4k tokens",
+      "approx_tokens": 3255,
+      "ttft_ms": 3838.47,
+      "generation_tps": 100.03,
+      "total_latency_ms": 3838.47
+    },
+    {
+      "context_label": "8k tokens",
+      "approx_tokens": 2051,
+      "ttft_ms": 4654.6,
+      "generation_tps": 94.38,
+      "total_latency_ms": 4654.6
+    }
+  ],
+  "concurrency": {
+    "1_users": {
+      "concurrency": 1,
+      "p50_latency_ms": 3881.8,
+      "p90_latency_ms": 3881.8,
+      "p99_latency_ms": 3881.8,
+      "total_tokens": 256,
+      "effective_tps": 65.83
+    },
+    "2_users": {
+      "concurrency": 2,
+      "p50_latency_ms": 6610.05,
+      "p90_latency_ms": 6610.05,
+      "p99_latency_ms": 6610.05,
+      "total_tokens": 512,
+      "effective_tps": 77.35
+    },
+    "4_users": {
+      "concurrency": 4,
+      "p50_latency_ms": 9278.25,
+      "p90_latency_ms": 13062.0,
+      "p99_latency_ms": 13062.0,
+      "total_tokens": 1024,
+      "effective_tps": 78.38
+    }
+  }
+}

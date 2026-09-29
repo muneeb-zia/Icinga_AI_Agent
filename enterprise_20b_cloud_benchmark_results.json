@@ -1,0 +1,430 @@
+{
+  "GPT-OSS 20B": {
+    "model_id": "openai/gpt-oss-20b",
+    "display_name": "GPT-OSS 20B",
+    "params_billions": 20.9,
+    "provider": "Groq LPU Cloud (Ultra-Fast Inference)",
+    "throughput_and_ttft": {
+      "success": true,
+      "ttft_ms": 549.75,
+      "generation_tps": 140.96,
+      "total_latency_ms": 688.12,
+      "tokens_generated": 97,
+      "response_text": "We need to output JSON with tool_name and parameters. The user asks: \"Analyze the root cause and provide 2 immediate diagnostic steps.\" We need to choose a tool. The available tools: schedule_downtime, acknowledge_problem, restart_service, generate_sla_report, dispatch_teams_notification. The user wants diagnostic steps, not action. We could dispatch notification to team with severity and message. Or we could acknowledge problem. The best tool: dispatch_teams_notification. Provide message"
+    },
+    "kv_cache_speedup": {
+      "cold_ttft_ms": 284.32,
+      "warm_ttft_ms": 298.85,
+      "speedup_pct": 0.0
+    },
+    "tool_calling_precision": {
+      "valid_json_pct": 100.0,
+      "tool_match_pct": 100.0,
+      "schema_perfect_pct": 100.0,
+      "scenarios": [
+        {
+          "scenario": 1,
+          "expected_tool": "schedule_downtime",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 2,
+          "expected_tool": "acknowledge_problem",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 3,
+          "expected_tool": "restart_service",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 4,
+          "expected_tool": "generate_sla_report",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 5,
+          "expected_tool": "dispatch_teams_notification",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        }
+      ]
+    },
+    "context_scaling": [
+      {
+        "context_tier": "1k",
+        "approx_tokens": 800,
+        "ttft_ms": 371.82,
+        "generation_tps": 111.84,
+        "total_latency_ms": 420.23
+      },
+      {
+        "context_tier": "2k",
+        "approx_tokens": 1800,
+        "ttft_ms": 573.11,
+        "generation_tps": 73.31,
+        "total_latency_ms": 641.09
+      },
+      {
+        "context_tier": "4k",
+        "approx_tokens": 3600,
+        "ttft_ms": 551.6,
+        "generation_tps": 74.66,
+        "total_latency_ms": 629.52
+      }
+    ],
+    "concurrency_stress": {
+      "1_users": {
+        "concurrency": 1,
+        "p50_latency_ms": 542.3,
+        "p90_latency_ms": 542.3,
+        "p99_latency_ms": 542.3,
+        "effective_tps": 58.94
+      },
+      "2_users": {
+        "concurrency": 2,
+        "p50_latency_ms": 3624.12,
+        "p90_latency_ms": 3624.12,
+        "p99_latency_ms": 3624.12,
+        "effective_tps": 17.65
+      },
+      "4_users": {
+        "concurrency": 4,
+        "p50_latency_ms": 1658.18,
+        "p90_latency_ms": 3852.32,
+        "p99_latency_ms": 3852.32,
+        "effective_tps": 19.13
+      }
+    }
+  },
+  "Qwen 3.6 27B": {
+    "model_id": "qwen/qwen3.6-27b",
+    "display_name": "Qwen 3.6 27B",
+    "params_billions": 27.0,
+    "provider": "Groq LPU Cloud (Enterprise Tier)",
+    "throughput_and_ttft": {
+      "success": true,
+      "ttft_ms": 106.36,
+      "generation_tps": 298.17,
+      "total_latency_ms": 338.73,
+      "tokens_generated": 101,
+      "response_text": "<think>\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Role:** Icinga Enterprise AIOps Autonomous Incident Agent.\n    *   **Input:** Alert Incident: CRITICAL on host `db-prod-mysql-01`, Service `check_mysql_connections`. Output: CRITICAL - Active connections at 98% (490/500 max_connections). Thread pool saturated.\n    *   **Task:** Analyze root cause and"
+    },
+    "kv_cache_speedup": {
+      "cold_ttft_ms": 110.95,
+      "warm_ttft_ms": 129.24,
+      "speedup_pct": 0.0
+    },
+    "tool_calling_precision": {
+      "valid_json_pct": 100.0,
+      "tool_match_pct": 100.0,
+      "schema_perfect_pct": 100.0,
+      "scenarios": [
+        {
+          "scenario": 1,
+          "expected_tool": "schedule_downtime",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 2,
+          "expected_tool": "acknowledge_problem",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 3,
+          "expected_tool": "restart_service",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 4,
+          "expected_tool": "generate_sla_report",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 5,
+          "expected_tool": "dispatch_teams_notification",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        }
+      ]
+    },
+    "context_scaling": [
+      {
+        "context_tier": "1k",
+        "approx_tokens": 800,
+        "ttft_ms": 185.3,
+        "generation_tps": 159.41,
+        "total_latency_ms": 319.93
+      },
+      {
+        "context_tier": "2k",
+        "approx_tokens": 1800,
+        "ttft_ms": 1560.61,
+        "generation_tps": 30.0,
+        "total_latency_ms": 1700.16
+      },
+      {
+        "context_tier": "4k",
+        "approx_tokens": 3600,
+        "ttft_ms": 14637.64,
+        "generation_tps": 3.46,
+        "total_latency_ms": 14747.56
+      }
+    ],
+    "concurrency_stress": {
+      "1_users": {
+        "concurrency": 1,
+        "p50_latency_ms": 1404.45,
+        "p90_latency_ms": 1404.45,
+        "p99_latency_ms": 1404.45,
+        "effective_tps": 25.62
+      },
+      "2_users": {
+        "concurrency": 2,
+        "p50_latency_ms": 2409.21,
+        "p90_latency_ms": 2409.21,
+        "p99_latency_ms": 2409.21,
+        "effective_tps": 29.86
+      },
+      "4_users": {
+        "concurrency": 4,
+        "p50_latency_ms": 2337.3,
+        "p90_latency_ms": 4570.72,
+        "p99_latency_ms": 4570.72,
+        "effective_tps": 18.7
+      }
+    }
+  },
+  "GPT-OSS 120B": {
+    "model_id": "openai/gpt-oss-120b",
+    "display_name": "GPT-OSS 120B",
+    "params_billions": 120.0,
+    "provider": "Groq LPU Cloud (Frontier Heavyweight)",
+    "throughput_and_ttft": {
+      "success": true,
+      "ttft_ms": 127.57,
+      "generation_tps": 261.87,
+      "total_latency_ms": 370.41,
+      "tokens_generated": 97,
+      "response_text": "The user asks: \"Analyze the root cause and provide 2 immediate diagnostic steps.\" According to developer instruction, we must output only JSON matching a tool invocation. But the user is asking for analysis, not a tool action. However the system says we must output only JSON for a tool. The user request is not a tool request. We have to interpret: maybe we need to respond with a tool action that helps? The user wants analysis and steps, not a tool. But the"
+    },
+    "kv_cache_speedup": {
+      "cold_ttft_ms": 353.15,
+      "warm_ttft_ms": 98.83,
+      "speedup_pct": 72.01472258205516
+    },
+    "tool_calling_precision": {
+      "valid_json_pct": 100.0,
+      "tool_match_pct": 100.0,
+      "schema_perfect_pct": 100.0,
+      "scenarios": [
+        {
+          "scenario": 1,
+          "expected_tool": "schedule_downtime",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 2,
+          "expected_tool": "acknowledge_problem",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 3,
+          "expected_tool": "restart_service",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 4,
+          "expected_tool": "generate_sla_report",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 5,
+          "expected_tool": "dispatch_teams_notification",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        }
+      ]
+    },
+    "context_scaling": [
+      {
+        "context_tier": "1k",
+        "approx_tokens": 800,
+        "ttft_ms": 371.56,
+        "generation_tps": 100.37,
+        "total_latency_ms": 468.27
+      },
+      {
+        "context_tier": "2k",
+        "approx_tokens": 1800,
+        "ttft_ms": 285.09,
+        "generation_tps": 143.04,
+        "total_latency_ms": 328.57
+      },
+      {
+        "context_tier": "4k",
+        "approx_tokens": 3600,
+        "ttft_ms": 3925.79,
+        "generation_tps": 11.68,
+        "total_latency_ms": 4022.36
+      }
+    ],
+    "concurrency_stress": {
+      "1_users": {
+        "concurrency": 1,
+        "p50_latency_ms": 434.88,
+        "p90_latency_ms": 434.88,
+        "p99_latency_ms": 434.88,
+        "effective_tps": 73.49
+      },
+      "2_users": {
+        "concurrency": 2,
+        "p50_latency_ms": 3656.63,
+        "p90_latency_ms": 3656.63,
+        "p99_latency_ms": 3656.63,
+        "effective_tps": 17.49
+      },
+      "4_users": {
+        "concurrency": 4,
+        "p50_latency_ms": 5785.44,
+        "p90_latency_ms": 5895.54,
+        "p99_latency_ms": 5895.54,
+        "effective_tps": 21.7
+      }
+    }
+  },
+  "Qwen 2.5 Coder 32B": {
+    "model_id": "hf:Qwen/Qwen2.5-Coder-32B-Instruct",
+    "display_name": "Qwen 2.5 Coder 32B",
+    "params_billions": 32.5,
+    "provider": "HuggingFace Dedicated Serverless GPU",
+    "throughput_and_ttft": {
+      "success": true,
+      "ttft_ms": 2062.86,
+      "generation_tps": 24.21,
+      "total_latency_ms": 3552.26,
+      "tokens_generated": 86,
+      "response_text": "{\n  \"tool_name\": \"dispatch_teams_notification\",\n  \"parameters\": {\n    \"team\": \"DBA\",\n    \"severity\": \"CRITICAL\",\n    \"message\": \"CRITICAL alert on host db-prod-mysql-01 for service check_mysql_connections. Active connections at 98% (490/500 max_connections). Thread pool saturated. Immediate diagnostic steps required.\"\n  }\n}"
+    },
+    "kv_cache_speedup": {
+      "cold_ttft_ms": 1231.87,
+      "warm_ttft_ms": 1184.51,
+      "speedup_pct": 3.844561489081133
+    },
+    "tool_calling_precision": {
+      "valid_json_pct": 100.0,
+      "tool_match_pct": 100.0,
+      "schema_perfect_pct": 100.0,
+      "scenarios": [
+        {
+          "scenario": 1,
+          "expected_tool": "schedule_downtime",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 2,
+          "expected_tool": "acknowledge_problem",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 3,
+          "expected_tool": "restart_service",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 4,
+          "expected_tool": "generate_sla_report",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        },
+        {
+          "scenario": 5,
+          "expected_tool": "dispatch_teams_notification",
+          "is_valid_json": true,
+          "tool_match": true,
+          "schema_match": true
+        }
+      ]
+    },
+    "context_scaling": [
+      {
+        "context_tier": "1k",
+        "approx_tokens": 800,
+        "ttft_ms": 1015.33,
+        "generation_tps": 26.68,
+        "total_latency_ms": 1873.83
+      },
+      {
+        "context_tier": "2k",
+        "approx_tokens": 1800,
+        "ttft_ms": 0.0,
+        "generation_tps": 0.0,
+        "total_latency_ms": 276.11
+      },
+      {
+        "context_tier": "4k",
+        "approx_tokens": 3600,
+        "ttft_ms": 0.0,
+        "generation_tps": 0.0,
+        "total_latency_ms": 288.12
+      }
+    ],
+    "concurrency_stress": {
+      "1_users": {
+        "concurrency": 1,
+        "p50_latency_ms": 258.49,
+        "p90_latency_ms": 258.49,
+        "p99_latency_ms": 258.49,
+        "effective_tps": 0.0
+      },
+      "2_users": {
+        "concurrency": 2,
+        "p50_latency_ms": 270.75,
+        "p90_latency_ms": 270.75,
+        "p99_latency_ms": 270.75,
+        "effective_tps": 0.0
+      },
+      "4_users": {
+        "concurrency": 4,
+        "p50_latency_ms": 260.64,
+        "p90_latency_ms": 264.15,
+        "p99_latency_ms": 264.15,
+        "effective_tps": 0.0
+      }
+    }
+  }
+}

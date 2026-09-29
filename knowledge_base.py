@@ -195,77 +195,66 @@ def _init_vectorstore_background():
 _init_documents()
 
 
+_hyper_retriever = None
+_hyper_init_lock = threading.Lock()
+
+
+def _get_hyper_retriever() -> Optional[Any]:
+    global _hyper_retriever
+    if _hyper_retriever is not None:
+        return _hyper_retriever
+    with _hyper_init_lock:
+        if _hyper_retriever is None:
+            try:
+                from rag_pipeline import HyperOptimizedSemanticRetriever
+                _init_documents()
+                if _documents:
+                    _hyper_retriever = HyperOptimizedSemanticRetriever(_documents)
+            except Exception as e:
+                pass
+    return _hyper_retriever
+
+
 # =============================================================================
-# HYBRID SEARCH (BM25 + Dense Vector + Reciprocal Rank Fusion)
+# HYPER-OPTIMIZED SEMANTIC RAG SEARCH (with instant BM25 fallback)
 # =============================================================================
 
 def search_troubleshooting_guides(query: str, top_k: int = 2) -> str:
     """
-    Hybrid Search combining Lexical BM25 (for exact error codes/commands) and
-    Dense Vector Embeddings (for semantic concepts) using Reciprocal Rank Fusion.
+    Hyper-Optimized Semantic RAG Search combining Domain-Aware Structural Chunking,
+    Multi-Query Expansion, HyDE, and Cross-Encoder Re-Ranking.
+    Gracefully falls back to BM25 lexical ranker if embedding pipeline is initializing.
     """
     if not query or not query.strip():
         return "No query provided for runbook search."
 
     _init_documents()
-    if not _bm25_index or not _documents:
+    if not _documents:
         return "No knowledge base documents available."
 
     clean_query = query.strip()
 
-    # 1. BM25 Lexical Search (Instant, always available)
-    bm25_results = _bm25_index.search(clean_query, top_k=top_k * 3)
+    # 1. Try Hyper-Optimized Semantic RAG (Cross-Encoder + Parent Lineage)
+    try:
+        retriever = _get_hyper_retriever()
+        if retriever is not None:
+            hits = retriever.retrieve(clean_query, top_k=top_k)
+            if hits:
+                results = [f"📖 **{h['title']}**\n{h['text']}" for h in hits]
+                return "\n\n---\n\n".join(results)
+    except Exception:
+        pass
 
-    # 2. Vector Search (if ready)
-    vector_results = []
-    if _vectorstore is not None:
-        try:
-            vector_docs = _vectorstore.similarity_search(clean_query, k=top_k * 3)
-            for rank, doc in enumerate(vector_docs):
-                title = doc.metadata.get("title", "")
-                vector_results.append({
-                    "title": title,
-                    "content": doc.page_content,
-                    "rank": rank + 1
-                })
-        except Exception:
-            pass
+    # 2. Fallback to BM25 Lexical Search (Instant, zero-dep)
+    if _bm25_index:
+        bm25_results = _bm25_index.search(clean_query, top_k=top_k)
+        if bm25_results:
+            results = [f"📖 **{item['doc']['title']}**\n{item['doc']['content']}" for item in bm25_results]
+            return "\n\n---\n\n".join(results)
 
-    # 3. Reciprocal Rank Fusion (RRF)
-    # If only BM25 is available, use BM25 directly
-    if not vector_results:
-        if not bm25_results:
-            # Fallback: return the first matching general section or top section
-            return f"📖 **{_documents[0]['title']}**\n{_documents[0]['content']}"
+    # 3. Fallback: Return top general document
+    return f"📖 **{_documents[0]['title']}**\n{_documents[0]['content']}"
 
-        results = []
-        for item in bm25_results[:top_k]:
-            results.append(f"📖 **{item['doc']['title']}**\n{item['doc']['content']}")
-        return "\n\n---\n\n".join(results)
-
-    # Combine rankings with RRF: 1 / (60 + rank)
-    RRF_K = 60
-    rrf_scores = {}
-    content_map = {}
-
-    for rank, item in enumerate(bm25_results):
-        title = item["doc"]["title"]
-        content_map[title] = item["doc"]["content"]
-        rrf_scores[title] = rrf_scores.get(title, 0.0) + (1.0 / (RRF_K + (rank + 1)))
-
-    for item in vector_results:
-        title = item["title"]
-        content_map[title] = item["content"]
-        rrf_scores[title] = rrf_scores.get(title, 0.0) + (1.0 / (RRF_K + item["rank"]))
-
-    sorted_titles = sorted(rrf_scores.keys(), key=lambda t: rrf_scores[t], reverse=True)
-
-    results = []
-    for title in sorted_titles[:top_k]:
-        content = content_map.get(title, "")
-        results.append(f"📖 **{title}**\n{content}")
-
-    return "\n\n---\n\n".join(results)
 
 
 if __name__ == "__main__":

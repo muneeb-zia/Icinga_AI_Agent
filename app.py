@@ -37,6 +37,26 @@ with st.sidebar:
     
     st.divider()
     
+    # Operator Identity Selector (Tiered RBAC)
+    import os
+    st.subheader("🛡️ Operator Identity (RBAC)")
+    role_options = {
+        "👤 admin (Tier 4: Platform Admin)": "admin",
+        "👤 senior_sre (Tier 2: L2 Operator)": "senior_sre",
+        "👤 junior_operator (Tier 1: L1 Read-Only)": "junior_operator"
+    }
+    selected_role_label = st.selectbox(
+        "Active Operator Identity",
+        options=list(role_options.keys()),
+        index=0,
+        help="Simulate interacting with the agent as different authenticated Icinga Web 2 operators."
+    )
+    current_operator = role_options[selected_role_label]
+    os.environ["CURRENT_ICINGA_USER"] = current_operator
+    st.caption(f"Active Identity: `{current_operator}`")
+    
+    st.divider()
+    
     # Data Source Info
     st.subheader("📊 Data Sources")
     
@@ -59,22 +79,64 @@ with st.sidebar:
     
     st.divider()
     
+    # Active LLM Engine Selection
+    import os
+    st.subheader("🧠 LLM Engine Selection")
+    model_options = {
+        "🏢 Company GPU: GPT-OSS 20B (gpu-server.internal - 114 tok/s - Recommended)": ("ollama", "gpt-oss:20b", "http://gpu-server.internal:11434"),
+        "🏢 Company GPU: Qwen 3 14B (gpu-server.internal - Reasoning)": ("ollama", "qwen3:14b", "http://gpu-server.internal:11434"),
+        "🏢 Company GPU: Gemma 4 12B (gpu-server.internal)": ("ollama", "gemma4:12b", "http://gpu-server.internal:11434"),
+        "🏢 Company GPU: Llama 3.1 8B (gpu-server.internal)": ("ollama", "llama3.1:8b-instruct-q4_K_M", "http://gpu-server.internal:11434"),
+        "💻 Local Ollama: Llama 3.1 8B (Local Host)": ("ollama", "llama3.1:8b", "http://localhost:11434"),
+        "⚡ Groq Cloud LPU (openai/gpt-oss-20b)": ("groq", "openai/gpt-oss-20b", None)
+    }
+    
+    selected_label = st.selectbox(
+        "Active LLM",
+        options=list(model_options.keys()),
+        index=0,
+        help="Select between Company Dedicated GPU server, local private models, or cloud LPU."
+    )
+    selected_provider, selected_model, selected_base_url = model_options[selected_label]
+    
+    if "current_model" not in st.session_state or st.session_state.current_model != selected_model or st.session_state.get("current_base_url") != selected_base_url:
+        st.session_state.current_model = selected_model
+        st.session_state.current_provider = selected_provider
+        st.session_state.current_base_url = selected_base_url
+        if "agent_executor" in st.session_state:
+            del st.session_state["agent_executor"]
+            
+    if selected_base_url and "gpu-server.internal" in selected_base_url:
+        st.success(f"🏢 **Company 16GB GPU Server**\n\nModel: `{selected_model}`\n\nEndpoint: `{selected_base_url}`\n\nSpeed: **~114 tok/s** | VRAM: **12.7 GB resident**")
+    elif selected_provider == "ollama":
+        st.success(f"🟢 **Air-Gapped Private Inference**\n\nModel: `{selected_model}`\n\nEndpoint: `{selected_base_url or 'localhost:11434'}`\n\nRate Limits: **Unlimited**")
+    else:
+        st.info(f"⚡ **Groq Cloud LPU**\n\nModel: `{selected_model}`\n\nInference: ~175 tok/s")
+
+    st.divider()
+
     # Tool count info
-    from agent import read_tools_original, read_tools_extended, elasticsearch_tools, action_tools
-    total_tools = len(read_tools_original) + len(read_tools_extended) + len(elasticsearch_tools)
+    from agent import read_tools_original, read_tools_extended, elasticsearch_tools, action_tools, devops_tools
+    core_actions_count = len(action_tools) - len(devops_tools)
+    total_tools = len(read_tools_original) + len(read_tools_extended) + len(elasticsearch_tools) + len(devops_tools)
     if action_mode:
-        total_tools += len(action_tools)
+        total_tools += core_actions_count
     
     st.subheader("🔧 Available Tools")
-    st.metric("Total Tools", total_tools)
-    st.caption(f"📖 Read: {len(read_tools_original) + len(read_tools_extended)}")
-    st.caption(f"🔍 Elasticsearch: {len(elasticsearch_tools)}")
+    st.metric("Total Tools Active", total_tools)
+    st.caption(f"📖 Monitoring & RAG: {len(read_tools_original) + len(read_tools_extended)}")
+    st.caption(f"🔍 OpenSearch Logs: {len(elasticsearch_tools)}")
+    st.caption(f"🛠️ DevOps & NOC Suite: {len(devops_tools)}")
     if action_mode:
-        st.caption(f"⚡ Actions: {len(action_tools)}")
+        st.caption(f"⚡ Core Actions (HITL): {core_actions_count}")
+    else:
+        st.caption("🔒 Core Actions: Disabled (Toggle above)")
     
     st.divider()
     if st.button("🗑️ Clear Chat History"):
+        import uuid
         st.session_state.chat_history = []
+        st.session_state.session_id = str(uuid.uuid4())
         if "agent_executor" in st.session_state:
             del st.session_state["agent_executor"]
         st.rerun()
@@ -82,6 +144,10 @@ with st.sidebar:
 
 # --- Main Chat Interface ---
 st.title("Icinga AI Observability Agent")
+
+if "session_id" not in st.session_state:
+    import uuid
+    st.session_state.session_id = str(uuid.uuid4())
 
 if action_mode:
     st.caption("🟢 **Mode: Read + Action** — The agent can query AND modify the monitoring system.")
@@ -101,7 +167,12 @@ if "current_action_mode" not in st.session_state or st.session_state.current_act
 
 if "agent_executor" not in st.session_state:
     with st.spinner("Initializing Agent..."):
-        st.session_state.agent_executor = create_agent(enable_actions=action_mode)
+        st.session_state.agent_executor = create_agent(
+            enable_actions=action_mode,
+            provider=st.session_state.get("current_provider", "ollama"),
+            model_name=st.session_state.get("current_model", "gpt-oss:20b"),
+            base_url=st.session_state.get("current_base_url", "http://gpu-server.internal:11434")
+        )
 
 # Display chat messages from history on app rerun
 for message in st.session_state.chat_history:
@@ -138,46 +209,63 @@ for message in st.session_state.chat_history:
                             st.session_state.pending_prompt = "No, do not execute the action. Cancel it."
                             st.rerun()
 
-# --- Example prompts ---
+# --- Interactive Quick-Test Scenarios ---
 if not st.session_state.chat_history:
-    st.markdown("### 💡 Try asking:")
+    st.markdown("### 💡 Quick-Test Scenarios (Click any scenario to test live):")
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.markdown("**📖 Read Queries:**")
+        st.markdown("**🧠 Pillar 1: Semantic RAG & RCA:**")
         example_reads = [
-            "Show me the system status",
-            "Are there any hosts that are DOWN?",
-            "List all services on icinga-master",
-            "What's the check latency of our monitoring?",
-            "Which hosts are in scheduled downtime?",
+            ("Fix Critical Disk Alert", "The disk service on icinga-master is critical. How do I fix it?"),
+            ("Resolve MySQL Saturation", "How do I resolve high MySQL connection pool exhaustion?"),
+            ("List All Critical Alerts", "Show me all critical alerts across our infrastructure"),
+            ("Cluster Health Status", "Show me the system health status of Icinga"),
         ]
-        for example in example_reads:
-            st.code(example, language=None)
+        for title, prompt_str in example_reads:
+            if st.button(f"🔍 {title}", key=f"btn_p1_{title}", help=prompt_str, use_container_width=True):
+                st.session_state.pending_prompt = prompt_str
+                st.rerun()
     
     with col2:
         if action_mode:
-            st.markdown("**⚡ Action Queries:**")
+            st.markdown("**⚡ Pillar 2: Alert Actions (HITL Gate):**")
             example_actions = [
-                "Acknowledge the ping alert on web-01",
-                "Schedule 2 hours of downtime on db-master",
-                "Add a comment to web-01: investigating slow response",
-                "Force a re-check of the SSH service on db-master",
-                "Send a notification about the disk issue on web-01",
+                ("Acknowledge icinga-master", "Acknowledge the problem on icinga-master"),
+                ("Schedule 2h Downtime", "Schedule 2 hours of downtime on icinga-master for OS patching"),
+                ("Add Operational Comment", "Add a comment to icinga-master: Investigating issue"),
+                ("Force Immediate Re-check", "Force a re-check on icinga-master"),
             ]
-            for example in example_actions:
-                st.code(example, language=None)
+            for title, prompt_str in example_actions:
+                if st.button(f"⚡ {title}", key=f"btn_p2_{title}", help=prompt_str, use_container_width=True):
+                    st.session_state.pending_prompt = prompt_str
+                    st.rerun()
         else:
-            st.markdown("**🔍 Deep Dive Queries:**")
+            st.markdown("**🔍 Log & Metric Analytics:**")
             example_deep = [
-                "What is the status of SSH on db-master?",
-                "Show me the notification history for web-01",
-                "Who was notified about the last critical alert?",
-                "Search logs for 'disk full'",
-                "Plot the CPU trend for icinga-master",
+                ("Search OpenSearch Logs", "Search OpenSearch logs for 'disk full'"),
+                ("Plot Host CPU Trend", "Plot the CPU trend for icinga-master"),
+                ("Host State Timeline", "Show the UP/DOWN state timeline for icinga-master"),
+                ("Top Failing Hosts", "What are the top failing hosts in the last 24 hours?"),
             ]
-            for example in example_deep:
-                st.code(example, language=None)
+            for title, prompt_str in example_deep:
+                if st.button(f"📊 {title}", key=f"btn_p2_deep_{title}", help=prompt_str, use_container_width=True):
+                    st.session_state.pending_prompt = prompt_str
+                    st.rerun()
+
+    with col3:
+        st.markdown("**🛠️ Pillar 3: DevOps & NOC Suite:**")
+        example_devops = [
+            ("1. Auto-Generate BPM DAG Tree", "Auto-generate a BPM service tree for E-Commerce Payment Gateway with quorum evaluation"),
+            ("2. SLA Report & Email Client", "Generate a 30-day SLA and Incident Health Report for RetailCorp Global and email it to client@retailcorp.com"),
+            ("3. Route Smart Notification", "Route a smart notification for host api-auth-01 service check_http in CRITICAL state with error: HTTP 500 NullPointerException at AuthFilter.java:88"),
+            ("4. 24/7 NOC Shift Handover", "Compile and generate the 24/7 NOC shift handover briefing for Shift Alpha to Shift Beta"),
+            ("5. Verify L1 vs L2 RBAC Clearance", "Check if an L1 user can execute acknowledge_alert, and verify if an L2 user can"),
+        ]
+        for title, prompt_str in example_devops:
+            if st.button(f"🛠️ {title}", key=f"btn_devops_{title}", help=prompt_str, use_container_width=True):
+                st.session_state.pending_prompt = prompt_str
+                st.rerun()
 
 # --- Input Sanitization: Strip prompt injection attempts ---
 INJECTION_PATTERNS = [
@@ -214,28 +302,13 @@ if prompt:
         with st.spinner("Agent is thinking and querying Icinga..."):
             try:
                 # Invoke the LangGraph agent
-                config = {"configurable": {"thread_id": "streamlit-session"}}
+                config = {"configurable": {"thread_id": st.session_state.get("session_id", "streamlit-session")}}
                 response = st.session_state.agent_executor.invoke({
                     "messages": [("user", prompt)]
                 }, config)
 
-                msgs = response.get("messages", [])
-                output_text = ""
-                for msg in reversed(msgs):
-                    if hasattr(msg, "content") and not getattr(msg, "tool_calls", None):
-                        c = msg.content if isinstance(msg.content, str) else str(msg.content)
-                        if c.strip():
-                            output_text = c.strip()
-                            break
-
-                if not output_text and msgs:
-                    for msg in reversed(msgs):
-                        if type(msg).__name__ == "ToolMessage" and msg.content:
-                            output_text = f"Tool result: {msg.content}"
-                            break
-
-                if not output_text:
-                    output_text = response.get("output", "Analysis completed.")
+                from agent import format_agent_response
+                output_text = format_agent_response(response)
 
                 st.markdown(output_text, unsafe_allow_html=True)
                 
@@ -244,6 +317,28 @@ if prompt:
                 if os.path.exists("latest_plot.png"):
                     st.image("latest_plot.png", use_container_width=True)
                     os.remove("latest_plot.png")
+
+                # --- Live File Downloads for Executive SLA Reports ---
+                if os.path.exists("enterprise_sla_report.pdf") or os.path.exists("enterprise_sla_report.xlsx"):
+                    dl1, dl2 = st.columns(2)
+                    if os.path.exists("enterprise_sla_report.pdf"):
+                        with open("enterprise_sla_report.pdf", "rb") as f_pdf:
+                            dl1.download_button(
+                                label="📄 Download Branded SLA PDF Report",
+                                data=f_pdf.read(),
+                                file_name="enterprise_sla_report.pdf",
+                                mime="application/pdf",
+                                key="dl_btn_pdf"
+                            )
+                    if os.path.exists("enterprise_sla_report.xlsx"):
+                        with open("enterprise_sla_report.xlsx", "rb") as f_xls:
+                            dl2.download_button(
+                                label="📗 Download Multi-Tab Excel Workbook (.xlsx)",
+                                data=f_xls.read(),
+                                file_name="enterprise_sla_report.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="dl_btn_xls"
+                            )
                 
                 # Add assistant response to chat history
                 st.session_state.chat_history.append(AIMessage(content=output_text))
@@ -274,6 +369,5 @@ if prompt:
                             
             except Exception as e:
                 st.error(f"An error occurred: {str(e)}")
-                # If Ollama is not running, show a helpful message
                 if "Connection" in str(e) or "Max retries exceeded" in str(e):
-                    st.info("Tip: Ensure Ollama is running locally and the model `qwen2.5-coder:7b` is pulled.")
+                    st.info("Tip: Ensure Ollama is running locally at http://localhost:11434 with model `llama3.1:8b`.")

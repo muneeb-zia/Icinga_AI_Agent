@@ -332,3 +332,192 @@ docker logs --tail 100 <container_id>
 1. Restart container with increased memory limits in `docker-compose.yaml`.
 2. Inspect logs and restart container: `docker restart <container_name>`.
 3. Force recheck in Icinga to clear alert: `force_recheck(hostname="<host>")`.
+
+---
+
+## 11. Alert: Icinga Director Config Deployment Validation & Syntax Failure
+**Symptom / Trigger:** Icinga Director deployment fails with `CRITICAL: Configuration validation failed with exit code 1` or `Error: Object of type 'Host' has invalid property` or `icinga2 daemon -C` returns syntax errors.
+
+### Diagnostic Commands:
+```bash
+# 1. Validate configuration manually on command line
+icinga2 daemon -C
+icinga2 daemon -C --dump-objects | head -n 50
+
+# 2. Inspect latest Director deployment log
+tail -n 100 /var/log/icinga2/icinga2.log | grep -i -E "syntax error|validation failed|critical"
+
+# 3. Check Director database sync status
+icingacli director health check
+```
+
+### Root Cause Analysis (RCA):
+- **Syntax / Type Mismatch:** Duplicate object definition or invalid custom variable type (e.g. array expected, string provided).
+- **Orphaned Applied Rules:** An `apply Service` rule references a template or hostgroup that was deleted or renamed in Director.
+- **Zone Placement Error:** Host assigned to an invalid or unconfigured Satellite Zone endpoint.
+
+### Remediation Plan:
+1. Run `icinga2 daemon -C` to identify the exact file, line number, and character offset of the syntax error.
+2. Revert the last Director deployment in Icinga Web 2 Director module: `Activity Log -> Rollback to previous config revision`.
+3. Fix invalid custom variable in Director template and re-deploy.
+
+---
+
+## 12. Alert: Business Process Module (BPM) Tree & Service Hierarchy Degradation
+**Symptom / Trigger:** Business Process node reports `CRITICAL` or `WARNING` because child redundancy threshold breached (e.g. `1 of 3 database nodes available`).
+
+### Diagnostic Commands:
+```bash
+# 1. Query BPM tree status via API
+curl -k -s -u icingaadmin:icinga "https://localhost:5665/v1/objects/hosts?filter=match(%22*bpm*%22,%20host.name)"
+
+# 2. Check child node health statuses
+icingacli businessprocess process show --process "PaymentGateway"
+```
+
+### Root Cause Analysis (RCA):
+- **Redundancy Quorum Loss:** N-1 cluster nodes down in an `N of M` redundancy group (e.g. 2 out of 3 DB replicas down).
+- **Cascading Dependency Failure:** Core upstream dependency (e.g. Identity Provider / Auth Token Service) down, marking all downstream BPM nodes critical.
+- **Unacknowledged Child Alerts:** Host flap or reboot without downtime in child services degrading the overall Business Service SLA.
+
+### Remediation Plan:
+1. Inspect the child nodes with the worst state in the BPM hierarchy.
+2. Remediate the root child service (e.g. restart database replica or web worker).
+3. If node is under planned maintenance, schedule downtime on the child host to prevent BPM SLA penalty calculation.
+
+---
+
+## 13. Alert: Kubernetes Pod CrashLoopBackOff & OOMKilled
+**Symptom / Trigger:** `check_k8s` returns `CRITICAL - Pod payment-service-7b6c-xxx is in CrashLoopBackOff` or `ExitCode: 137 (OOMKilled)`.
+
+### Diagnostic Commands:
+```bash
+# 1. Inspect pod status and describe events
+kubectl get pods -n production -l app=payment-service
+kubectl describe pod <pod_name> -n production
+
+# 2. Check previous container crash logs
+kubectl logs <pod_name> -n production --previous --tail=100
+
+# 3. Check memory limits and node resource pressure
+kubectl top pods -n production
+kubectl top nodes
+```
+
+### Root Cause Analysis (RCA):
+- **OOMKilled (Exit Code 137):** Container exceeded `resources.limits.memory` defined in Pod spec.
+- **Liveness Probe Failure:** Liveness probe endpoint (`/healthz`) timed out or returned HTTP 500.
+- **Missing ConfigMap / Secret:** Application startup crashed because required environment variable or secret was not mounted.
+
+### Remediation Plan:
+1. Check `kubectl describe pod` for `Last State: Terminated` with `Reason: OOMKilled`.
+2. Increase container memory request and limit in Kubernetes Deployment manifest:
+   ```yaml
+   resources:
+     requests:
+       memory: "1Gi"
+     limits:
+       memory: "2Gi"
+   ```
+3. Apply deployment update: `kubectl apply -f deployment.yaml` or `kubectl rollout restart deployment/payment-service -n production`.
+
+---
+
+## 14. Alert: Redis In-Memory Cache Saturation, OOM & Eviction Storms
+**Symptom / Trigger:** `check_redis` returns `CRITICAL - used_memory > 95%` or `evicted_keys_per_sec > 1000` or `OOM command not allowed when used memory > 'maxmemory'`.
+
+### Diagnostic Commands:
+```bash
+# 1. Check Redis memory and client stats
+redis-cli info memory
+redis-cli info stats
+redis-cli info clients
+
+# 2. Identify top memory consuming keys
+redis-cli --bigkeys
+redis-cli --memkeys
+
+# 3. Check eviction policy
+redis-cli config get maxmemory-policy
+```
+
+### Root Cause Analysis (RCA):
+- **Keys Without TTL:** Cache keys written without expiration (`TTL = -1`), permanently consuming RAM.
+- **Maxmemory Policy Misconfiguration:** Policy set to `noeviction` instead of `allkeys-lru` or `volatile-lru`, causing Redis to reject write queries when full.
+- **Client Output Buffer Overflow:** Heavy pub/sub or slow replica causing client output buffer to balloon in RAM.
+
+### Remediation Plan:
+1. Change eviction policy dynamically to prevent write rejections:
+   ```bash
+   redis-cli config set maxmemory-policy allkeys-lru
+   ```
+2. Identify and expire abandoned unversioned cache keys:
+   ```bash
+   redis-cli --scan --pattern "session:temp:*" | xargs -L 100 redis-cli del
+   ```
+3. Scale Redis instance memory limit in `redis.conf`: `maxmemory 8gb`.
+
+---
+
+## 15. Alert: RabbitMQ Message Queue Congestion & High Unacknowledged Messages
+**Symptom / Trigger:** `check_rabbitmq` returns `CRITICAL - Queue order_processing depth > 50,000 messages` or `Unacknowledged messages > 5,000` or `Memory alarm triggered`.
+
+### Diagnostic Commands:
+```bash
+# 1. Inspect queue status and message counts
+rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers
+rabbitmqctl list_consumers
+
+# 2. Check cluster alarms and memory / disk watermarks
+rabbitmqctl status
+rabbitmq-diagnostics check_alarms
+```
+
+### Root Cause Analysis (RCA):
+- **Consumer Starvation / Crashed Consumers:** Background consumer worker pool crashed, leaving 0 active consumers on the queue.
+- **Consumer Processing Deadlock:** Worker thread stuck processing a poisoned message without timeout or retry dead-letter queue.
+- **Memory Watermark Breached:** RabbitMQ hit `vm_memory_high_watermark`, blocking all upstream publishers.
+
+### Remediation Plan:
+1. Scale up background consumer workers:
+   ```bash
+   systemctl restart order-worker@* || kubectl scale deployment/order-worker --replicas=10
+   ```
+2. Move poisoned unprocessable messages to Dead Letter Exchange (DLX):
+   ```bash
+   rabbitmqadmin get queue=order_processing ackmode=ack_requeue_false count=50
+   ```
+3. Clear alarms once queue drains: `rabbitmq-diagnostics check_alarms`.
+
+---
+
+## 16. Alert: DNS Resolution Failures, CoreDNS Latency & Resolv.conf
+**Symptom / Trigger:** `check_dns` returns `CRITICAL - Server 1.1.1.1 took > 2000 ms to respond` or `lookup failed: NXDOMAIN / SERVFAIL` or services log `Name or service not known`.
+
+### Diagnostic Commands:
+```bash
+# 1. Query DNS servers with dig
+dig @127.0.0.53 +time=2 +tries=1 my-service.internal
+dig @10.96.0.10 -p 53 kubernetes.default.svc.cluster.local
+
+# 2. Inspect /etc/resolv.conf and systemd-resolved
+cat /etc/resolv.conf
+systemd-resolve --status
+
+# 3. Check CoreDNS pod logs in Kubernetes
+kubectl logs -n kube-system -l k8s-app=kube-dns --tail=50
+```
+
+### Root Cause Analysis (RCA):
+- **DNS Server Unreachable / Throttling:** Upstream nameserver down or dropped UDP port 53 packets due to rate limiting.
+- **Ndots:5 Latency Multiplier:** High `/etc/resolv.conf` `ndots:5` setting causing 4 iterative NXDOMAIN lookups for external hostnames before resolving.
+- **Local systemd-resolved Cache Deadlock:** Local resolver daemon hung or listening socket stalled.
+
+### Remediation Plan:
+1. Restart local DNS resolver:
+   ```bash
+   systemctl restart systemd-resolved
+   ```
+2. Add explicit secondary upstream nameserver to `/etc/resolv.conf` (e.g. `nameserver 8.8.8.8`).
+3. Optimize DNS lookup in application pods by configuring `dnsConfig` with `ndots: 2`.
+
