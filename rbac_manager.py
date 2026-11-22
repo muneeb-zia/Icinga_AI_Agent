@@ -88,6 +88,9 @@ class RBACManager:
         "schedule_service_downtime": RBACRole.L2_OPERATOR,
         "add_incident_comment": RBACRole.L2_OPERATOR,
         "send_notification_card": RBACRole.L2_OPERATOR,
+        "add_host_comment": RBACRole.L2_OPERATOR,
+        "remove_alert_acknowledgement": RBACRole.L2_OPERATOR,
+        "send_notification": RBACRole.L2_OPERATOR,
 
         # --- L3 SENIOR SRE TOOLS (Level 3+) ---
         "restart_service": RBACRole.L3_SRE_ENGINEER,
@@ -96,12 +99,21 @@ class RBACManager:
         "kill_runaway_process": RBACRole.L3_SRE_ENGINEER,
         "drop_page_cache": RBACRole.L3_SRE_ENGINEER,
         "scale_deployment": RBACRole.L3_SRE_ENGINEER,
+        "create_hostgroup": RBACRole.L3_SRE_ENGINEER,
+        "create_host_template": RBACRole.L3_SRE_ENGINEER,
+        "onboard_new_host": RBACRole.L3_SRE_ENGINEER,
+        "create_servicegroup": RBACRole.L3_SRE_ENGINEER,
+        "create_service_template": RBACRole.L3_SRE_ENGINEER,
+        "create_service": RBACRole.L3_SRE_ENGINEER,
+        "create_serviceset": RBACRole.L3_SRE_ENGINEER,
+        "create_check_command": RBACRole.L3_SRE_ENGINEER,
 
         # --- L4 PLATFORM ADMIN TOOLS (Level 4 ONLY) ---
         "create_user": RBACRole.L4_PLATFORM_ADMIN,
         "delete_user": RBACRole.L4_PLATFORM_ADMIN,
         "modify_bpm_hierarchy": RBACRole.L4_PLATFORM_ADMIN,
         "deploy_icinga_director_config": RBACRole.L4_PLATFORM_ADMIN,
+        "deploy_director_config": RBACRole.L4_PLATFORM_ADMIN,
         "bulk_remediate_hosts": RBACRole.L4_PLATFORM_ADMIN,
         "export_audit_logs": RBACRole.L4_PLATFORM_ADMIN
     }

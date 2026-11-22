@@ -42,7 +42,7 @@ hosts = [
         "state": 0, # UP
         "output": "PING OK - Packet loss = 0%, RTA = 0.38 ms",
         "services": [
-            {"name": "http", "state": 0, "output": "HTTP OK: /healthz returned 200 OK"},
+            {"name": "http", "state": 2, "output": "HTTP CRITICAL: HTTP/1.1 500 Internal Server Error - NullPointerException at AuthFilter.java:88"},
             {"name": "memory", "state": 1, "output": "MEMORY WARNING - 84.5% used (6.76 GB of 8.00 GB)"}
         ]
     },
@@ -96,14 +96,15 @@ def seed():
     print("=== Seeding Enterprise Fleet into Icinga 2 Core ===")
     for h in hosts:
         h_name = h["name"]
-        # Use dummy check command for demo hosts so states reflect realistic enterprise monitoring
-        chk_cmd = "dummy" if h["state"] == 0 else "hostalive"
+        # The dummy check replays dummy_state/dummy_text on every run, so demo states persist.
         url_host = f"{BASE_URL}/objects/hosts/{h_name}"
         host_data = {
             "attrs": {
                 "display_name": h["display_name"],
                 "address": h["address"],
-                "check_command": chk_cmd
+                "check_command": "dummy",
+                "vars.dummy_state": 2 if h["state"] else 0,
+                "vars.dummy_text": h["output"],
             }
         }
         r = requests.post(url_host, auth=AUTH, headers=HEADERS, verify=False, json=host_data)
@@ -126,10 +127,11 @@ def seed():
         for s in h.get("services", []):
             s_name = s["name"]
             url_srv = f"{BASE_URL}/objects/services/{h_name}!{s_name}"
-            srv_chk = "dummy" if s["state"] == 0 else "ping"
             srv_data = {
                 "attrs": {
-                    "check_command": srv_chk
+                    "check_command": "dummy",
+                    "vars.dummy_state": s["state"],
+                    "vars.dummy_text": s["output"],
                 }
             }
             r_s = requests.post(url_srv, auth=AUTH, headers=HEADERS, verify=False, json=srv_data)

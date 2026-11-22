@@ -1,4 +1,6 @@
+import functools
 import os
+import re
 import sys
 import dotenv
 dotenv.load_dotenv()
@@ -467,7 +469,36 @@ def _check_rbac_or_block(tool_name: str, username: Optional[str] = None, tool_ar
         return f"🛑 SECURITY GATE BLOCKED (RBAC Violation):\n- User: '{active_user}' ({role_name})\n- Attempted Action: '{tool_name}'\n- Clearance: DENIED\n- Reason: {reason}\n- Audit Trail: Security violation permanently logged to rbac_audit_log.json"
     return None
 
+
+_ACTION_APPROVED = False
+_APPROVAL_RE = re.compile(r"^\s*(yes|y|yep|approve[d]?|confirm(ed)?|proceed|go ahead|do it)\b", re.IGNORECASE)
+
+
+def set_operator_turn(message: str) -> None:
+    """Record whether the operator's latest message explicitly approves staged write actions."""
+    global _ACTION_APPROVED
+    _ACTION_APPROVED = bool(_APPROVAL_RE.match(message or ""))
+
+
+def gated_write(tool_name: str):
+    """RBAC check plus human approval, enforced in code before any write reaches Icinga."""
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            blocked = _check_rbac_or_block(tool_name, kwargs.get("username"), kwargs)
+            if blocked:
+                return blocked
+            if not _ACTION_APPROVED:
+                staged = {k: v for k, v in kwargs.items() if v is not None}
+                return (f"ACTION STAGED, NOT EXECUTED: '{tool_name}' with parameters {staged} requires explicit "
+                        "operator approval. Summarize exactly what will change, then ask the operator: 'Shall I proceed?'")
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
 @tool
+@gated_write("acknowledge_alert")
 def acknowledge_alert(hostname: Optional[str] = None, service: Optional[str] = None, comment: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     ACKNOWLEDGES a problem on a host or service in Icinga.
@@ -481,15 +512,13 @@ def acknowledge_alert(hostname: Optional[str] = None, service: Optional[str] = N
     if not h:
         return "Error: 'hostname' is required to acknowledge an alert."
     
-    blocked = _check_rbac_or_block("acknowledge_alert", p.get("username"), p)
-    if blocked:
-        return blocked
 
     s = p.get("service") or p.get("service_name")
     c = p.get("comment", "Acknowledged by AI Agent")
     return str(icinga_actions.acknowledge_problem(h, service=s, comment=c))
 
 @tool
+@gated_write("schedule_host_downtime")
 def schedule_host_downtime(hostname: Optional[str] = None, duration_hours: Optional[float] = 2.0, comment: Optional[str] = None, service: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     SCHEDULES a maintenance downtime window for a host (and optionally a specific service).
@@ -504,9 +533,6 @@ def schedule_host_downtime(hostname: Optional[str] = None, duration_hours: Optio
     if not h:
         return "Error: 'hostname' is required to schedule downtime."
     
-    blocked = _check_rbac_or_block("schedule_host_downtime", p.get("username"), p)
-    if blocked:
-        return blocked
 
     try:
         dur = float(p.get("duration_hours", 2.0))
@@ -517,6 +543,7 @@ def schedule_host_downtime(hostname: Optional[str] = None, duration_hours: Optio
     return str(icinga_actions.schedule_downtime(h, duration_hours=dur, comment=c, service=s))
 
 @tool
+@gated_write("add_host_comment")
 def add_host_comment(hostname: Optional[str] = None, comment: Optional[str] = None, service: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     ADDS a comment/note to a host or service in Icinga Web 2.
@@ -534,6 +561,7 @@ def add_host_comment(hostname: Optional[str] = None, comment: Optional[str] = No
     return str(icinga_actions.add_comment(h, comment=c, service=s))
 
 @tool
+@gated_write("remove_alert_acknowledgement")
 def remove_alert_acknowledgement(hostname: Optional[str] = None, service: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     REMOVES an existing acknowledgement from a host or service.
@@ -549,6 +577,7 @@ def remove_alert_acknowledgement(hostname: Optional[str] = None, service: Option
     return str(icinga_actions.remove_acknowledgement(h, service=s))
 
 @tool
+@gated_write("send_notification")
 def send_notification(hostname: Optional[str] = None, comment: Optional[str] = None, service: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     FORCE-SENDS a custom notification for a host or service.
@@ -566,6 +595,7 @@ def send_notification(hostname: Optional[str] = None, comment: Optional[str] = N
     return str(icinga_actions.send_custom_notification(h, comment=c, service=s))
 
 @tool
+@gated_write("force_recheck")
 def force_recheck(hostname: Optional[str] = None, service: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     FORCES an immediate re-check of a host or service.
@@ -586,6 +616,7 @@ def force_recheck(hostname: Optional[str] = None, service: Optional[str] = None,
 # =============================================================================
 
 @tool
+@gated_write("create_hostgroup")
 def create_hostgroup(object_name: Optional[str] = None, display_name: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     CREATES a new host group in Icinga Director.
@@ -601,6 +632,7 @@ def create_hostgroup(object_name: Optional[str] = None, display_name: Optional[s
     return str(icinga_actions.create_hostgroup(obj, disp))
 
 @tool
+@gated_write("create_host_template")
 def create_host_template(object_name: Optional[str] = None, check_command: Optional[str] = "hostalive", query_json: Optional[Any] = None, **kwargs) -> str:
     """
     CREATES a new host template in Icinga Director.
@@ -616,6 +648,7 @@ def create_host_template(object_name: Optional[str] = None, check_command: Optio
     return str(icinga_actions.create_host_template(obj, check_command=cmd))
 
 @tool
+@gated_write("onboard_new_host")
 def onboard_new_host(object_name: Optional[str] = None, address: Optional[str] = None, imports: Optional[Any] = None, display_name: Optional[str] = None, groups: Optional[Any] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     ONBOARDS a new host into Icinga Director.
@@ -637,6 +670,7 @@ def onboard_new_host(object_name: Optional[str] = None, address: Optional[str] =
     return str(icinga_actions.create_host(obj, addr, imports=imp, display_name=disp, groups=grp))
 
 @tool
+@gated_write("create_servicegroup")
 def create_servicegroup(object_name: Optional[str] = None, display_name: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     CREATES a new service group in Icinga Director.
@@ -652,6 +686,7 @@ def create_servicegroup(object_name: Optional[str] = None, display_name: Optiona
     return str(icinga_actions.create_servicegroup(obj, disp))
 
 @tool
+@gated_write("create_service_template")
 def create_service_template(object_name: Optional[str] = None, check_command: Optional[str] = "ping4", query_json: Optional[Any] = None, **kwargs) -> str:
     """
     CREATES a new service template in Icinga Director.
@@ -667,6 +702,7 @@ def create_service_template(object_name: Optional[str] = None, check_command: Op
     return str(icinga_actions.create_service_template(obj, cmd))
 
 @tool
+@gated_write("create_service")
 def create_service(object_name: Optional[str] = None, host: Optional[str] = None, imports: Optional[Any] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     CREATES a new service and attaches it to a host in Icinga Director.
@@ -686,6 +722,7 @@ def create_service(object_name: Optional[str] = None, host: Optional[str] = None
     return str(icinga_actions.create_service(obj, h, imp))
 
 @tool
+@gated_write("create_serviceset")
 def create_serviceset(object_name: Optional[str] = None, host: Optional[str] = None, description: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     CREATES a new service set in Icinga Director.
@@ -703,6 +740,7 @@ def create_serviceset(object_name: Optional[str] = None, host: Optional[str] = N
     return str(icinga_actions.create_serviceset(obj, h, desc))
 
 @tool
+@gated_write("create_check_command")
 def create_check_command(object_name: Optional[str] = None, command: Optional[str] = None, query_json: Optional[Any] = None, **kwargs) -> str:
     """
     CREATES a new check command plugin definition.
@@ -718,6 +756,7 @@ def create_check_command(object_name: Optional[str] = None, command: Optional[st
     return str(icinga_actions.create_check_command(obj, cmd))
 
 @tool
+@gated_write("deploy_director_config")
 def deploy_director_config() -> str:
     """DEPLOYS all staged configuration changes from Icinga Director to the live system."""
     return str(icinga_actions.deploy_director_config())

@@ -17,7 +17,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 # Ensure parent directory is in sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from agent import create_agent, tools, resolve_text_tool_calls, format_agent_response
+from agent import create_agent, tools, resolve_text_tool_calls, format_agent_response, set_operator_turn
 import icinga_api
 import elasticsearch_api
 import graphite_api
@@ -68,14 +68,25 @@ app.add_middleware(
 DEFAULT_GPU_URL = os.environ.get("COMPANY_GPU_URL") or os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434"
 DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL") or "llama3.1:8b"
 
+DEFAULT_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama").lower()
+
 active_llm_config = {
-    "provider": "ollama",
-    "model": DEFAULT_MODEL,
+    "provider": DEFAULT_PROVIDER,
+    "model": DEFAULT_MODEL if DEFAULT_PROVIDER == "ollama" else os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b"),
     "base_url": DEFAULT_GPU_URL,
-    "server_label": "🏢 Company GPU"
+    "server_label": "🏢 GPU Server" if DEFAULT_PROVIDER == "ollama" else "⚡ Groq Cloud LPU"
 }
 
 AVAILABLE_MODELS = [
+    {
+        "id": "openai/gpt-oss-20b",
+        "name": "GPT-OSS 20B (Groq Cloud)",
+        "badge": "⚡ Groq LPU",
+        "server": "⚡ Groq Cloud LPU",
+        "provider": "groq",
+        "base_url": None,
+        "description": "Same model family served from Groq's cloud LPUs"
+    },
     {
         "id": "gpt-oss:20b",
         "name": "GPT-OSS 20B (Default)",
@@ -159,6 +170,7 @@ async def list_models():
         "active_base_url": active_llm_config["base_url"],
         "active_provider": active_llm_config["provider"],
         "active_server_label": active_llm_config["server_label"],
+        "tools_count": len(tools),
         "gpu_connected": gpu_online,
         "company_gpu_url": DEFAULT_GPU_URL,
         "models": AVAILABLE_MODELS
@@ -174,7 +186,12 @@ async def switch_model(req: SwitchModelRequest):
         base_url = (req.base_url or ("http://localhost:11434" if "localhost" in model_name else DEFAULT_GPU_URL)).strip()
         provider = (req.provider or "ollama").strip()
 
-        server_label = "🏢 GPU Server" if base_url == DEFAULT_GPU_URL and "localhost" not in base_url else "💻 Local Ollama"
+        if provider == "groq":
+            server_label = "⚡ Groq Cloud LPU"
+        elif base_url == DEFAULT_GPU_URL and "localhost" not in base_url:
+            server_label = "🏢 GPU Server"
+        else:
+            server_label = "💻 Local Ollama"
         print(f"[Model Switch] Switching active agent to model '{model_name}' on {server_label} ({base_url})...")
 
         new_agent = create_agent(
@@ -217,6 +234,7 @@ def _format_query(query: str, context: Optional[Dict[str, Any]], req_user: Optio
     full_query = query.strip()
     user = req_user or (context.get("username") if context else None) or "admin"
     os.environ["CURRENT_ICINGA_USER"] = user
+    set_operator_turn(full_query)
 
     try:
         from rbac_manager import RBACManager
@@ -336,10 +354,9 @@ async def event_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
                         tool_text = str(out_obj.content).strip()
                     elif isinstance(out_obj, str):
                         tool_text = out_obj.strip()
-                    elif isinstance(out_obj, dict):
-                        tool_text = json.dumps(out_obj, indent=2)
 
-                    if tool_text and not tool_text.startswith("Error"):
+                    # Only pre-formatted Markdown is shown directly; raw data structures are left for the model to summarize.
+                    if tool_text and not tool_text.startswith(("Error", "{", "[", "ACTION STAGED")):
                         payload = f"\n\n{tool_text}\n\n"
                         accumulated_text += payload
                         stream_worked = True

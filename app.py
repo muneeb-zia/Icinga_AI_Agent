@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 
-from agent import create_agent
+from agent import create_agent, set_operator_turn
 from langchain_core.messages import HumanMessage, AIMessage
 
 LOCAL_OLLAMA_URL = "http://localhost:11434"
@@ -299,6 +299,7 @@ if "pending_prompt" in st.session_state and st.session_state.pending_prompt:
 
 if prompt:
     prompt = _sanitize_input(prompt)
+    set_operator_turn(prompt)
     # Add user message to chat history
     st.session_state.chat_history.append(HumanMessage(content=prompt))
 

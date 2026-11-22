@@ -10,8 +10,8 @@ An AI operations copilot for **Icinga 2**. Ask questions in plain English, and i
 ![Icinga](https://img.shields.io/badge/Icinga%202-Director%20%7C%20Web%202-06062C)
 
 <p align="center">
-  <img src="docs/images/screenshots/icinga_ai_hosts_table_1788730839663.png" alt="AI copilot embedded inside Icinga Web 2" width="720">
-  <br><em>The copilot runs inside Icinga Web 2 as a native module, streaming answers next to the monitoring views.</em>
+  <img src="docs/images/screenshots/icinga-01-fleet-triage.png" alt="AI copilot embedded inside Icinga Web 2" width="900">
+  <br><em>The copilot runs inside Icinga Web 2, triaging live problems from the Icinga API next to the dashboard.</em>
 </p>
 
 ---
@@ -32,14 +32,25 @@ Phase-by-phase write-ups live in [`docs/phases/`](docs/phases).
 
 ## What it can do
 
+**Inside Icinga Web 2**
+
 <table>
 <tr>
-<td width="50%"><img src="docs/images/screenshots/01-rag-root-cause-analysis.png" alt="Runbook-grounded root cause analysis"><br><b>Root-cause analysis grounded in runbooks.</b> Hybrid retrieval pulls the relevant remediation steps instead of letting the model guess.</td>
-<td width="50%"><img src="docs/images/screenshots/02-fleet-health-summary.png" alt="Fleet health summary"><br><b>Fleet-wide triage.</b> Live host and service state, grouped and summarized on request.</td>
+<td width="50%"><img src="docs/images/screenshots/icinga-02-root-cause-analysis.png" alt="Root cause analysis in Icinga Web 2"><br><b>Root-cause analysis.</b> Reads the live check result, retrieves the matching runbook, and explains the cause and the fix.</td>
+<td width="50%"><img src="docs/images/screenshots/icinga-03-host-context-diagnosis.png" alt="Context-aware host diagnosis"><br><b>Context-aware diagnosis.</b> Opened from a host page, the copilot picks up that host as context and diagnoses it from its state, services, history and logs.</td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/images/screenshots/03-hitl-confirmation-gate.png" alt="Human-in-the-loop confirmation"><br><b>Human-in-the-loop gate.</b> Write actions stop for explicit operator approval, and they are checked against the operator's RBAC tier before they run.</td>
-<td width="50%"><img src="docs/images/screenshots/04-bpm-dag-generation.png" alt="Business process tree generation"><br><b>Business-process automation.</b> Generates quorum-based business-process trees for Icinga's Business Process module.</td>
+<td width="50%"><img src="docs/images/screenshots/icinga-04-hitl-action-approval.png" alt="Write action staged for approval"><br><b>Approval before any write.</b> The agent stages the action, explains what will change, and waits.</td>
+<td width="50%"><img src="docs/images/screenshots/icinga-05-action-executed.png" alt="Action executed after approval"><br><b>Executed on Icinga Core.</b> After approval the acknowledgement goes through the Icinga API, and the Problems count drops from 3 to 2.</td>
+</tr>
+</table>
+
+**Standalone Streamlit console**
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/screenshots/01-rag-root-cause-analysis.png" alt="Runbook-grounded root cause analysis"><br>Runbook-grounded remediation steps.</td>
+<td width="50%"><img src="docs/images/screenshots/04-bpm-dag-generation.png" alt="Business process tree generation"><br>Quorum-based business-process tree generation.</td>
 </tr>
 </table>
 
@@ -94,8 +105,8 @@ flowchart LR
 
 ### Design decisions
 
-- **Authorization lives in code, not in the prompt.** The `@require_tier` decorator and `RBACManager` check the operator's tier at the tool's Python entry point, before any side effect, so a prompt injection cannot talk the model past the check. Any tool missing from the permission map requires the top tier (deny by default), and every authorized or blocked attempt is written to an audit log.
-- **Two locks on every write.** An action needs both the right RBAC tier and explicit operator confirmation in the UI.
+- **Authorization lives in code, not in the prompt.** Every write tool is wrapped in `@gated_write`, which asks `RBACManager` to check the operator's tier at the tool's Python entry point, before any side effect. A prompt injection cannot talk the model past the check. Any tool missing from the permission map requires the top tier (deny by default), and every authorized or blocked attempt is written to an audit log.
+- **Two locks on every write, both in code.** Even with the right tier, a write tool only runs when the operator's latest message is an explicit approval. Otherwise it returns "staged, not executed", the agent summarizes the change, and the UI shows Approve / Cancel.
 - **Hybrid retrieval.** Pure vector search missed exact tokens such as error codes and service names, so BM25 runs alongside dense embeddings and Reciprocal Rank Fusion merges the two ranked lists (k = 60). Runbooks are chunked on their Markdown headers so command blocks stay intact.
 - **Tools exposed over MCP.** `mcp_server.py` serves the same tool registry through the Model Context Protocol, so any MCP-compatible client can use it, not just this UI.
 - **Retrieval was benchmarked, not assumed.** Naive vector RAG, hybrid RAG, and an optimized pipeline (multi-query, HyDE, cross-encoder reranking, confidence threshold) were scored on the same 55-query set, distractors included. See the results below.
@@ -161,10 +172,13 @@ Icinga Web 2 is at http://localhost (default `admin` / `admin123`, configurable)
 ### Enable the Icinga Web 2 copilot
 
 ```bash
-uvicorn api.server:app --port 8000    # streaming backend for the module
+uvicorn api.server:app --port 8000    # streaming backend for the widget
+# Inject the copilot widget (Icinga's original bootstrap.js with the widget appended):
+docker exec icinga-lab cp /usr/share/icingaweb2/public/js/bootstrap.js /usr/share/icingaweb2/public/js/bootstrap.js.orig
+docker cp icinga-module-ai/public/js/bootstrap_fixed.js icinga-lab:/usr/share/icingaweb2/public/js/bootstrap.js
 ```
 
-docker-compose already mounts `icinga-module-ai/` into the container. Enable it under **Configuration → Modules → ai**, or run `icingacli module enable ai`. A floating copilot button then appears on every Icinga Web 2 page.
+Reload Icinga Web 2 and a floating copilot button appears on every page. It talks to the backend at `http://localhost:8000`. To remove it, copy `bootstrap.js.orig` back.
 
 ### Use it from an MCP client
 

@@ -1,3 +1,5 @@
+
+
 // =============================================================================
 // ICINGA AI AGENT — NATIVE WEB 2 INTEGRATION (V2.5 ENTERPRISE UPGRADE)
 // Live Groq Cloud LPU (GPT-OSS 20B+) • 47 Tools • Hybrid RAG • DevOps NOC Suite
@@ -8,6 +10,7 @@
     'use strict';
 
     var API_BASE = 'http://localhost:8000';
+    var TOOLS_COUNT = 48;
     var SESSION_ID = 'icinga-web-' + Math.random().toString(36).substring(2, 9);
     var ACTIVE_TAB = 'rag'; // 'rag', 'devops', 'actions'
     var IS_MAXIMIZED = false;
@@ -366,7 +369,7 @@
         welcomeMsg.className = 'ai-msg ai-b';
         welcomeMsg.innerHTML = [
             '<p style="margin:0 0 6px 0;">👋 <strong>Welcome to Icinga Enterprise AIOps Copilot</strong></p>',
-            '<p style="font-size:0.8rem;color:#64748b;margin:0 0 10px 0;">Powered by <strong>Company GPU (16GB VRAM)</strong>, LangGraph state engine, OpenSearch vector embeddings, and full NOC L1–L4 automation. You can switch between Company GPU models dynamically in the top bar. Select a scenario or ask anything:</p>',
+            '<p style="font-size:0.8rem;color:#64748b;margin:0 0 10px 0;">Powered by <strong>local or cloud LLMs</strong>, LangGraph state engine, OpenSearch vector embeddings, and full NOC L1–L4 automation. You can switch between Company GPU models dynamically in the top bar. Select a scenario or ask anything:</p>',
             '<div class="ai-chips" id="ai-quick-chips"></div>'
         ].join('');
         hist.appendChild(welcomeMsg);
@@ -500,6 +503,7 @@
                         data.models.forEach(function(m) {
                             var opt = document.createElement('option');
                             opt.value = m.id;
+                            opt.dataset.provider = m.provider || 'ollama';
                             opt.textContent = m.badge + ' ' + m.name;
                             if (m.id === data.active_model) {
                                 opt.selected = true;
@@ -507,15 +511,21 @@
                             modelSelect.appendChild(opt);
                         });
                     }
-                    if (data.gpu_connected) {
+                    TOOLS_COUNT = data.tools_count || TOOLS_COUNT;
+                    var vramBadge = panel.querySelector('#ai-gpu-vram-badge');
+                    if (data.active_provider === 'groq') {
                         gpuDot.className = 'ai-gpu-dot';
-                        gpuTitle.innerHTML = '🏢 Company GPU (Connected)';
+                        gpuTitle.innerHTML = '⚡ Groq Cloud LPU (Connected)';
+                        if (vramBadge) vramBadge.textContent = 'Cloud';
+                    } else if (data.gpu_connected) {
+                        gpuDot.className = 'ai-gpu-dot';
+                        gpuTitle.innerHTML = '🏢 GPU Server (Connected)';
                     } else {
                         gpuDot.className = 'ai-gpu-dot ai-offline';
-                        gpuTitle.innerHTML = '🏢 Company GPU (Offline / VPN needed)';
+                        gpuTitle.innerHTML = '🏢 GPU Server (Offline)';
                     }
                     if (hdrSub) {
-                        hdrSub.innerHTML = '<span class="ai-hdr-dot"></span><span>' + (data.active_server_label || 'Company GPU') + ' (' + data.active_model + ') &bull; 47 Tools &bull; Sentry APM</span>';
+                        hdrSub.innerHTML = '<span class="ai-hdr-dot"></span><span>' + (data.active_server_label || 'GPU Server') + ' (' + data.active_model + ') &bull; ' + TOOLS_COUNT + ' Tools</span>';
                     }
                 })
                 .catch(function(err) {
@@ -527,20 +537,21 @@
         if (modelSelect) {
             modelSelect.addEventListener('change', function() {
                 var chosenModel = modelSelect.value;
+                var chosenProvider = modelSelect.selectedOptions[0].dataset.provider || 'ollama';
                 modelSelect.disabled = true;
                 modelSelect.style.opacity = '0.6';
 
                 fetch(API_BASE + '/api/model', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model: chosenModel })
+                    body: JSON.stringify({ model: chosenModel, provider: chosenProvider })
                 })
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     modelSelect.disabled = false;
                     modelSelect.style.opacity = '1';
                     if (hdrSub) {
-                        hdrSub.innerHTML = '<span class="ai-hdr-dot"></span><span>' + (data.server_label || 'Company GPU') + ' (' + chosenModel + ') &bull; 47 Tools &bull; Sentry APM</span>';
+                        hdrSub.innerHTML = '<span class="ai-hdr-dot"></span><span>' + (data.server_label || 'GPU Server') + ' (' + chosenModel + ') &bull; ' + TOOLS_COUNT + ' Tools</span>';
                     }
                     var notice = document.createElement('div');
                     notice.className = 'ai-sys-notice';
@@ -673,8 +684,9 @@
                 contentDiv.innerHTML = renderMarkdown(fullText);
 
                 // Detect Human-In-The-Loop Approval Box
-                var lower = fullText.toLowerCase();
-                if (lower.indexOf('shall i proceed') !== -1 || lower.indexOf('would you like me to') !== -1 || lower.indexOf('shall i execute') !== -1 || lower.indexOf('confirm') !== -1) {
+                var tail = fullText.toLowerCase().replace(/[’']/g, "'").slice(-400);
+                var asksApproval = /shall i (proceed|execute|go ahead)|should i (proceed|go ahead)|(would|do) you (like|want) me to (proceed|go ahead|execute|apply|acknowledge|schedule|restart|create|delete|deploy|add)|please confirm|confirm (that you want|to proceed|the action)/.test(tail);
+                if (asksApproval) {
                     var hitlBox = document.createElement('div');
                     hitlBox.className = 'ai-hitl-box';
                     hitlBox.innerHTML = [
