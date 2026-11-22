@@ -34,7 +34,7 @@ except ImportError:
     UserRole = None
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-COMPANY_GPU_URL = os.environ.get("COMPANY_GPU_URL", "http://gpu-server.internal:11434")
+COMPANY_GPU_URL = os.environ.get("COMPANY_GPU_URL", "http://localhost:11434")
 
 def call_llm(model: str, prompt: str, system: str = "", base_url: Optional[str] = None) -> Dict[str, Any]:
     """Helper to query local or remote Ollama model synchronously with telemetry."""

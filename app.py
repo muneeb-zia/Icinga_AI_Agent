@@ -1,6 +1,12 @@
 import streamlit as st
+import os
+
 from agent import create_agent
 from langchain_core.messages import HumanMessage, AIMessage
+
+LOCAL_OLLAMA_URL = "http://localhost:11434"
+GPU_SERVER_URL = os.environ.get("COMPANY_GPU_URL", LOCAL_OLLAMA_URL)
+LOCAL_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 
 # --- UI Configuration ---
 st.set_page_config(page_title="Icinga AI Agent", page_icon="⚙️", layout="wide")
@@ -83,18 +89,20 @@ with st.sidebar:
     import os
     st.subheader("🧠 LLM Engine Selection")
     model_options = {
-        "🏢 Company GPU: GPT-OSS 20B (gpu-server.internal - 114 tok/s - Recommended)": ("ollama", "gpt-oss:20b", "http://gpu-server.internal:11434"),
-        "🏢 Company GPU: Qwen 3 14B (gpu-server.internal - Reasoning)": ("ollama", "qwen3:14b", "http://gpu-server.internal:11434"),
-        "🏢 Company GPU: Gemma 4 12B (gpu-server.internal)": ("ollama", "gemma4:12b", "http://gpu-server.internal:11434"),
-        "🏢 Company GPU: Llama 3.1 8B (gpu-server.internal)": ("ollama", "llama3.1:8b-instruct-q4_K_M", "http://gpu-server.internal:11434"),
-        "💻 Local Ollama: Llama 3.1 8B (Local Host)": ("ollama", "llama3.1:8b", "http://localhost:11434"),
+        "🏢 GPU Server: GPT-OSS 20B (~120 tok/s - Recommended)": ("ollama", "gpt-oss:20b", GPU_SERVER_URL),
+        "🏢 GPU Server: Qwen 3 14B (Reasoning)": ("ollama", "qwen3:14b", GPU_SERVER_URL),
+        "🏢 GPU Server: Gemma 4 12B": ("ollama", "gemma4:12b", GPU_SERVER_URL),
+        "🏢 GPU Server: Llama 3.1 8B": ("ollama", "llama3.1:8b-instruct-q4_K_M", GPU_SERVER_URL),
+        f"💻 Local Ollama: {LOCAL_MODEL}": ("ollama", LOCAL_MODEL, LOCAL_OLLAMA_URL),
         "⚡ Groq Cloud LPU (openai/gpt-oss-20b)": ("groq", "openai/gpt-oss-20b", None)
     }
-    
+    labels = list(model_options.keys())
+    default_index = 0 if GPU_SERVER_URL != LOCAL_OLLAMA_URL else labels.index(f"💻 Local Ollama: {LOCAL_MODEL}")
+
     selected_label = st.selectbox(
         "Active LLM",
-        options=list(model_options.keys()),
-        index=0,
+        options=labels,
+        index=default_index,
         help="Select between Company Dedicated GPU server, local private models, or cloud LPU."
     )
     selected_provider, selected_model, selected_base_url = model_options[selected_label]
@@ -106,7 +114,7 @@ with st.sidebar:
         if "agent_executor" in st.session_state:
             del st.session_state["agent_executor"]
             
-    if selected_base_url and "gpu-server.internal" in selected_base_url:
+    if selected_base_url and selected_base_url == GPU_SERVER_URL and GPU_SERVER_URL != LOCAL_OLLAMA_URL:
         st.success(f"🏢 **Company 16GB GPU Server**\n\nModel: `{selected_model}`\n\nEndpoint: `{selected_base_url}`\n\nSpeed: **~114 tok/s** | VRAM: **12.7 GB resident**")
     elif selected_provider == "ollama":
         st.success(f"🟢 **Air-Gapped Private Inference**\n\nModel: `{selected_model}`\n\nEndpoint: `{selected_base_url or 'localhost:11434'}`\n\nRate Limits: **Unlimited**")
@@ -170,8 +178,8 @@ if "agent_executor" not in st.session_state:
         st.session_state.agent_executor = create_agent(
             enable_actions=action_mode,
             provider=st.session_state.get("current_provider", "ollama"),
-            model_name=st.session_state.get("current_model", "gpt-oss:20b"),
-            base_url=st.session_state.get("current_base_url", "http://gpu-server.internal:11434")
+            model_name=st.session_state.get("current_model", os.environ.get("OLLAMA_MODEL", "llama3.1:8b")),
+            base_url=st.session_state.get("current_base_url", os.environ.get("OLLAMA_BASE_URL", LOCAL_OLLAMA_URL))
         )
 
 # Display chat messages from history on app rerun

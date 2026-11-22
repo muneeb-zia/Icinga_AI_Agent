@@ -1,9 +1,12 @@
+from dotenv import load_dotenv
+
+load_dotenv()
 import os
 import mysql.connector
 from typing import List, Dict
 
 # --- Data Source Configuration ---
-# Set to "elasticsearch" once VPN access to opensearch.internal:9200 is restored.
+# Set to "elasticsearch" to read history from an Elasticsearch/OpenSearch cluster instead.
 # Default: "mysql" (uses the local IDO MySQL database)
 DATA_SOURCE = os.environ.get("DATA_SOURCE", "mysql")
 
@@ -11,7 +14,7 @@ DATA_SOURCE = os.environ.get("DATA_SOURCE", "mysql")
 DB_HOST = os.environ.get("DB_HOST", "icinga-lab" if os.path.exists("/.dockerenv") else "127.0.0.1")
 DB_PORT = int(os.environ.get("DB_PORT", "3306"))
 DB_USER = os.environ.get("DB_USER", "icinga2")
-DB_PASS = os.environ.get("DB_PASS", "***REDACTED***")
+DB_PASS = os.environ.get("DB_PASS", "")
 DB_NAME = os.environ.get("DB_NAME", "icinga2idomysql")
 
 DEMO_FALLBACK = os.environ.get("DEMO_MODE", "true").lower() == "true"

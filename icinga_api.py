@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+
+load_dotenv()
 import requests
 import urllib3
 import json
@@ -9,7 +12,7 @@ import os
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 ICINGA_API_URL = os.environ.get("ICINGA_API_URL", "https://icinga-lab:5665/v1" if os.path.exists("/.dockerenv") else "https://localhost:5665/v1")
-AUTH = ("root", os.environ.get("ICINGA_API_PASSWORD", "***REDACTED***"))
+AUTH = (os.environ.get("ICINGA_API_USER", "root"), os.environ.get("ICINGA_API_PASSWORD", ""))
 DEMO_FALLBACK = os.environ.get("DEMO_MODE", "true").lower() == "true"
 
 def _make_request(endpoint: str, method: str = "GET", params: Optional[Dict] = None, data: Optional[Dict] = None) -> Any:

@@ -1,0 +1,324 @@
+"""
+Targeted Empirical Benchmark Suite for GPT-OSS 20B on Company 16GB GPU Server (set COMPANY_GPU_URL / OLLAMA_URL)
+=====================================================================================================
+Comprehensive Evaluation across the 5 Core Pillar 2 Dimensions:
+1. Generation Throughput (tok/s), Time-To-First-Token (TTFT ms), and Prompt Eval Throughput
+2. Static KV-Cache / Prompt Caching Speedup (%)
+3. Structured Tool-Calling Precision across 5 realistic Icinga 2 operations
+4. Context Window Scaling Latency (1k, 2k, 4k, 8k tokens)
+5. Concurrency Load Stress Curve (1, 2, 4 parallel operators, P50, P90, P99)
+"""
+
+import os
+import sys
+import time
+import json
+import csv
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, Any, List
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
+COMPANY_GPU_URL = os.environ.get("COMPANY_GPU_URL", "http://localhost:11434")
+MODEL_NAME = "gpt-oss:20b"
+
+SYSTEM_PROMPT_ICINGA = """You are the Icinga Enterprise AIOps Autonomous Incident Agent.
+When given an operational scenario or alert, you MUST output ONLY valid JSON matching this schema:
+{
+  "tool_name": "<tool_name>",
+  "parameters": { ... }
+}
+Available Tools:
+1. schedule_downtime: {"host_name": str, "service_name": str, "author": str, "comment": str, "duration_seconds": int}
+2. acknowledge_problem: {"host_name": str, "service_name": str, "author": str, "comment": str}
+3. restart_service: {"host_name": str, "service_name": str, "force": bool}
+4. generate_sla_report: {"client_name": str, "days": int, "format": str}
+5. dispatch_teams_notification: {"team": str, "severity": str, "message": str}
+
+Output ONLY the JSON object. Do not include markdown formatting or commentary."""
+
+def query_gpt_stream(prompt: str, system: str = "") -> Dict[str, Any]:
+    """Execute streaming HTTP request to Ollama measuring TTFT and generation TPS."""
+    payload = {
+        "model": MODEL_NAME,
+        "prompt": prompt,
+        "system": system,
+        "stream": True,
+        "options": {
+            "temperature": 0.0,
+            "num_predict": 256
+        }
+    }
+    url = f"{COMPANY_GPU_URL}/api/generate"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"}
+    )
+    
+    start_time = time.perf_counter()
+    first_token_time = None
+    full_response = []
+    eval_count = 0
+    eval_duration_ns = 0
+    prompt_eval_count = 0
+    prompt_eval_duration_ns = 0
+    
+    try:
+        with urllib.request.urlopen(req, timeout=180) as response:
+            for line in response:
+                if not line:
+                    continue
+                chunk = json.loads(line.decode("utf-8"))
+                
+                resp_token = chunk.get("response", "")
+                if first_token_time is None and (resp_token or chunk.get("thinking")):
+                    first_token_time = time.perf_counter()
+                
+                if resp_token:
+                    full_response.append(resp_token)
+                
+                if chunk.get("done"):
+                    prompt_eval_count = chunk.get("prompt_eval_count", 0)
+                    prompt_eval_duration_ns = chunk.get("prompt_eval_duration", 0)
+                    eval_count = chunk.get("eval_count", len(full_response))
+                    eval_duration_ns = chunk.get("eval_duration", 0)
+                    break
+                    
+        end_time = time.perf_counter()
+        total_time_sec = end_time - start_time
+        ttft_ms = ((first_token_time - start_time) * 1000.0) if first_token_time else (total_time_sec * 1000.0)
+        
+        eval_duration_sec = (eval_duration_ns / 1e9) if eval_duration_ns > 0 else total_time_sec
+        gen_tps = (eval_count / eval_duration_sec) if eval_duration_sec > 0 else 0.0
+        
+        prompt_eval_sec = (prompt_eval_duration_ns / 1e9) if prompt_eval_duration_ns > 0 else 0.0
+        prompt_tps = (prompt_eval_count / prompt_eval_sec) if prompt_eval_sec > 0 else 0.0
+        
+        return {
+            "success": True,
+            "ttft_ms": round(ttft_ms, 2),
+            "generation_tps": round(gen_tps, 2),
+            "prompt_eval_tps": round(prompt_tps, 2),
+            "total_latency_ms": round(total_time_sec * 1000.0, 2),
+            "tokens_generated": eval_count,
+            "prompt_tokens": prompt_eval_count,
+            "response_text": "".join(full_response).strip()
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "ttft_ms": 0.0,
+            "generation_tps": 0.0,
+            "prompt_eval_tps": 0.0,
+            "total_latency_ms": 0.0,
+            "tokens_generated": 0,
+            "prompt_tokens": 0,
+            "response_text": ""
+        }
+
+def run_comprehensive_gpt_oss_benchmark():
+    print("=" * 90)
+    print(f"🚀 INITIATING FULL EMPIRICAL BENCHMARK FOR {MODEL_NAME.upper()}")
+    print(f"   Target Hardware Tier: Company Enterprise 16GB GPU Server ({COMPANY_GPU_URL})")
+    print("=" * 90)
+
+    # 1. Throughput & TTFT
+    print("\n[TEST 1/5] Measuring Generation Throughput (TPS) & Time-To-First-Token (TTFT)...")
+    diagnostic_prompt = (
+        "Alert Incident: CRITICAL on host db-prod-mysql-01.\n"
+        "Service: check_mysql_connections.\n"
+        "Plugin Output: CRITICAL - Active connections at 98% (490/500 max_connections). Thread pool saturated.\n"
+        "Analyze the root cause and provide 3 immediate diagnostic steps."
+    )
+    tp = query_gpt_stream(diagnostic_prompt, system=SYSTEM_PROMPT_ICINGA)
+    print(f"  • Status: {'✅ SUCCESS' if tp['success'] else '❌ FAILED'}")
+    print(f"  • TTFT (Time-To-First-Token): {tp['ttft_ms']} ms")
+    print(f"  • Generation Throughput: {tp['generation_tps']} tok/s")
+    print(f"  • Prompt Evaluation Speed: {tp['prompt_eval_tps']} tok/s")
+    print(f"  • Output Tokens: {tp['tokens_generated']} tokens")
+    print(f"  • Total Request Latency: {tp['total_latency_ms']} ms")
+
+    # 2. KV-Cache & Prompt Caching Speedup
+    print("\n[TEST 2/5] Evaluating Static Prompt & KV-Cache TTFT Speedup...")
+    static_context = SYSTEM_PROMPT_ICINGA + "\n" + ("# Runbook Policy: Auto-triage MySQL incidents if threads > 400.\n" * 15)
+    cold_sys = static_context + f"\n# Nonce: {time.time_ns()}"
+    
+    print("  • Executing Cold Request (Cache-busting nonce)...")
+    cold_res = query_gpt_stream("Query: Check threshold status for db-prod-mysql-01.", system=cold_sys)
+    
+    print("  • Executing Warm Request (Exact cached system prompt reuse)...")
+    warm_res = query_gpt_stream("Query: Provide recommendation for db-prod-mysql-01.", system=static_context)
+    
+    cold_ttft = cold_res.get("ttft_ms", 1000.0)
+    warm_ttft = warm_res.get("ttft_ms", 300.0)
+    speedup_pct = max(0.0, ((cold_ttft - warm_ttft) / (cold_ttft + 1e-5)) * 100.0)
+    print(f"  • Cold TTFT: {cold_ttft} ms | Warm TTFT: {warm_ttft} ms")
+    print(f"  • KV-Cache TTFT Speedup: +{round(speedup_pct, 2)}%")
+
+    # 3. Tool Calling Precision (5 Scenarios)
+    print("\n[TEST 3/5] Stress-Testing Structured Tool Calling Schema Precision (5 Scenarios)...")
+    scenarios = [
+        {
+            "prompt": "Schedule a 2 hour maintenance downtime for host db-prod-mysql-01 and service check_mysql_connections. Author: noc_lead, reason: Emergency index rebuild.",
+            "expected_tool": "schedule_downtime",
+            "required_keys": ["host_name", "service_name", "author", "comment", "duration_seconds"]
+        },
+        {
+            "prompt": "Acknowledge the critical disk alert on host web-server-02 for service check_disk. Author: sreadmin, comment: Cleaning /var/log.",
+            "expected_tool": "acknowledge_problem",
+            "required_keys": ["host_name", "service_name", "author", "comment"]
+        },
+        {
+            "prompt": "Restart the nginx service on web-lb-01 immediately with force=True.",
+            "expected_tool": "restart_service",
+            "required_keys": ["host_name", "service_name", "force"]
+        },
+        {
+            "prompt": "Generate a 30-day SLA compliance report for client RetailCorp in PDF format.",
+            "expected_tool": "generate_sla_report",
+            "required_keys": ["client_name", "days", "format"]
+        },
+        {
+            "prompt": "Send a critical alert notification to the DevOps team regarding database lock saturation.",
+            "expected_tool": "dispatch_teams_notification",
+            "required_keys": ["team", "severity", "message"]
+        }
+    ]
+
+    valid_json_count = 0
+    correct_tool_count = 0
+    valid_schema_count = 0
+
+    for idx, sc in enumerate(scenarios):
+        res = query_gpt_stream(sc["prompt"], system=SYSTEM_PROMPT_ICINGA)
+        raw_text = res.get("response_text", "").strip()
+        
+        clean_text = raw_text
+        if "```json" in clean_text:
+            clean_text = clean_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in clean_text:
+            clean_text = clean_text.split("```")[1].split("```")[0].strip()
+            
+        if "</think>" in clean_text:
+            clean_text = clean_text.split("</think>")[1].strip()
+            
+        is_json = False
+        tool_match = False
+        schema_match = False
+        
+        try:
+            parsed = json.loads(clean_text)
+            is_json = True
+            valid_json_count += 1
+            if parsed.get("tool_name") == sc["expected_tool"]:
+                tool_match = True
+                correct_tool_count += 1
+                params = parsed.get("parameters", {})
+                if all(k in params for k in sc["required_keys"]):
+                    schema_match = True
+                    valid_schema_count += 1
+        except Exception:
+            pass
+            
+        print(f"  • Scenario {idx+1} ({sc['expected_tool']}): JSON={is_json} | Tool Match={tool_match} | Schema Match={schema_match}")
+
+    json_pct = round((valid_json_count / len(scenarios)) * 100.0, 1)
+    tool_pct = round((correct_tool_count / len(scenarios)) * 100.0, 1)
+    schema_pct = round((valid_schema_count / len(scenarios)) * 100.0, 1)
+    
+    print(f"  📊 Precision Summary: JSON={json_pct}% | Tool Selection={tool_pct}% | Schema={schema_pct}%")
+
+    # 4. Context Window Scaling
+    print("\n[TEST 4/5] Evaluating Context Window Scaling Latency (1k, 2k, 4k, 8k tokens)...")
+    base_log = "2026-08-30T23:00:00.102Z host=db-prod-mysql-01 thread=104 query='SELECT * FROM orders' duration=4.2s lock_time=1.8s\n"
+    context_results = []
+    
+    for label, repeat in [("1k tokens", 8), ("2k tokens", 18), ("4k tokens", 38), ("8k tokens", 80)]:
+        prompt = f"Telemetry Analysis:\n{base_log * repeat}\nIdentify any long-running query threads."
+        ctx_res = query_gpt_stream(prompt, system=SYSTEM_PROMPT_ICINGA)
+        print(f"  • Context {label}: TTFT={ctx_res['ttft_ms']} ms | Gen TPS={ctx_res['generation_tps']} | Total Latency={ctx_res['total_latency_ms']} ms")
+        context_results.append({
+            "context_label": label,
+            "approx_tokens": ctx_res.get("prompt_tokens", repeat * 100),
+            "ttft_ms": ctx_res.get("ttft_ms", 0.0),
+            "generation_tps": ctx_res.get("generation_tps", 0.0),
+            "total_latency_ms": ctx_res.get("total_latency_ms", 0.0)
+        })
+        time.sleep(0.5)
+
+    # 5. Concurrency Load Stress Curve (1, 2, 4 users)
+    print("\n[TEST 5/5] Measuring Concurrency Load Stress (1, 2, 4 Parallel Users)...")
+    stress_prompt = "Quick triage: Host web-app-04 returned 502 Bad Gateway. What is the immediate diagnostic step?"
+    concurrency_results = {}
+    
+    for c in [1, 2, 4]:
+        latencies = []
+        tokens_list = []
+        wall_start = time.perf_counter()
+        
+        with ThreadPoolExecutor(max_workers=c) as executor:
+            futures = [executor.submit(query_gpt_stream, stress_prompt, SYSTEM_PROMPT_ICINGA) for _ in range(c)]
+            for fut in as_completed(futures):
+                res = fut.result()
+                latencies.append(res.get("total_latency_ms", 0.0))
+                tokens_list.append(res.get("tokens_generated", 0))
+                
+        wall_duration = time.perf_counter() - wall_start
+        latencies.sort()
+        p50 = latencies[int(len(latencies) * 0.50)] if latencies else 0.0
+        p90 = latencies[int(len(latencies) * 0.90)] if latencies else 0.0
+        p99 = latencies[int(len(latencies) * 0.99)] if latencies else 0.0
+        total_tokens = sum(tokens_list)
+        effective_tps = (total_tokens / wall_duration) if wall_duration > 0 else 0.0
+        
+        print(f"  • {c} Concurrent Users: P50={round(p50, 2)} ms | P90={round(p90, 2)} ms | Effective TPS={round(effective_tps, 2)}")
+        concurrency_results[f"{c}_users"] = {
+            "concurrency": c,
+            "p50_latency_ms": round(p50, 2),
+            "p90_latency_ms": round(p90, 2),
+            "p99_latency_ms": round(p99, 2),
+            "total_tokens": total_tokens,
+            "effective_tps": round(effective_tps, 2)
+        }
+
+    # Compile & Export Final Telemetry
+    final_benchmark_data = {
+        "model": MODEL_NAME,
+        "parameters": "20.9B",
+        "quantization": "MXFP4",
+        "context_length_limit": 131072,
+        "hardware_tier": "Tier 2: Company Enterprise Server (16GB VRAM GPU)",
+        "throughput": tp,
+        "kv_caching": {
+            "cold_ttft_ms": cold_ttft,
+            "warm_ttft_ms": warm_ttft,
+            "speedup_pct": round(speedup_pct, 2)
+        },
+        "tool_precision": {
+            "json_pct": json_pct,
+            "tool_selection_pct": tool_pct,
+            "schema_precision_pct": schema_pct
+        },
+        "context_scaling": context_results,
+        "concurrency": concurrency_results
+    }
+
+    output_json = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "gpt_oss_20b_benchmark_results.json")
+    with open(output_json, "w", encoding="utf-8") as f:
+        json.dump(final_benchmark_data, f, indent=2)
+
+    print("\n" + "=" * 90)
+    print("🎯 FULL EMPIRICAL BENCHMARK COMPLETED FOR GPT-OSS 20B")
+    print(f"   Saved Telemetry to: {output_json}")
+    print("=" * 90)
+    
+    return final_benchmark_data
+
+if __name__ == "__main__":
+    run_comprehensive_gpt_oss_benchmark()

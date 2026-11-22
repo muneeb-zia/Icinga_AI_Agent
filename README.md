@@ -1,473 +1,266 @@
-# 🛡️ Icinga 2 Autonomous AIOps Agent & Copilot
+# Icinga AIOps Agent
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![Icinga 2](https://img.shields.io/badge/Icinga-2.14%2B-brightgreen.svg)](https://icinga.com/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688.svg)](https://fastapi.tiangolo.com/)
-[![LangChain & LangGraph](https://img.shields.io/badge/LangChain-LangGraph-orange.svg)](https://www.langchain.com/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-FF4B4B.svg)](https://streamlit.io/)
-[![ChromaDB](https://img.shields.io/badge/ChromaDB-Hybrid%20RAG-purple.svg)](https://www.trychroma.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+An AI operations copilot for **Icinga 2**. Ask questions in plain English, and it queries live monitoring data, grounds its root-cause analysis in your runbooks, and can take real actions on the monitoring stack (acknowledge alerts, schedule downtime, onboard hosts through Icinga Director). Every action passes a deterministic role-based access check and a human approval step first.
 
-An enterprise-grade, autonomous AIOps observability and incident remediation system engineered for **Icinga 2** and **IcingaWeb 2**. This platform bridges the divide between passive telemetry, alert fatigue, manual runbook execution, and autonomous closed-loop infrastructure operations.
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-ReAct%20agent-1C3C3C)
+![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-server-6B4FBB)
+![FastAPI](https://img.shields.io/badge/FastAPI-SSE%20streaming-009688?logo=fastapi&logoColor=white)
+![Ollama](https://img.shields.io/badge/Ollama-local%20LLMs-000000)
+![Icinga](https://img.shields.io/badge/Icinga%202-Director%20%7C%20Web%202-06062C)
 
-Featuring a **Native IcingaWeb 2 Copilot UI**, **Multi-Agent Orchestration**, **Hybrid Semantic RAG (Vector + BM25 + RRF)**, **4-Tier Deterministic RBAC**, **Human-In-The-Loop (HITL) safety gates**, and an **Executive SLA Reporting Engine**.
-
----
-
-## 📑 Table of Contents
-
-- [Architectural Overview](#-architectural-overview)
-- [Core Enterprise Pillars](#-core-enterprise-pillars)
-  - [1. Production-Grade Semantic RAG Pipeline](#1-production-grade-semantic-rag-pipeline)
-  - [2. Multi-Tier LLM Benchmarking & Hardware Sizing](#2-multi-tier-llm-benchmarking--hardware-sizing)
-  - [3. Closed-Loop DevOps & Infrastructure Remediation](#3-closed-loop-devops--infrastructure-remediation)
-  - [4. Deterministic RBAC & Two-Phase HITL Safety Gate](#4-deterministic-rbac--two-phase-hitl-safety-gate)
-  - [5. Multi-Agent Orchestration & Executive Reporting](#5-multi-agent-orchestration--executive-reporting)
-  - [6. Native IcingaWeb 2 Copilot Module](#6-native-icingaweb-2-copilot-module)
-- [System Architecture Diagram](#-system-architecture-diagram)
-- [Agent Tool Matrix & Access Clearances](#-agent-tool-matrix--access-clearances)
-- [Repository Structure](#-repository-structure)
-- [Quickstart & Deployment Guide](#-quickstart--deployment-guide)
-  - [Prerequisites](#prerequisites)
-  - [1. Infrastructure Setup (Docker Compose)](#1-infrastructure-setup-docker-compose)
-  - [2. Python Environment & Dependencies](#2-python-environment--dependencies)
-  - [3. Configuration (.env)](#3-configuration-env)
-  - [4. Starting the FastAPI Bridge Server](#4-starting-the-fastapi-bridge-server)
-  - [5. Launching the Streamlit Operations Hub](#5-launching-the-streamlit-operations-hub)
-  - [6. Enabling the IcingaWeb 2 Copilot Module](#6-enabling-the-icingaweb-2-copilot-module)
-- [Automated Testing & Verification Suite](#-automated-testing--verification-suite)
-- [Executive Deliverables & Research Documentation](#-executive-deliverables--research-documentation)
-- [License & Contributors](#-license--contributors)
+<p align="center">
+  <img src="docs/images/screenshots/icinga_ai_hosts_table_1788730839663.png" alt="AI copilot embedded inside Icinga Web 2" width="720">
+  <br><em>The copilot runs inside Icinga Web 2 as a native module, streaming answers next to the monitoring views.</em>
+</p>
 
 ---
 
-## 🏛️ Architectural Overview
+## Background
 
-Modern enterprises face compounding monitoring challenges: alert floods, disconnected runbooks, error-prone manual triage, and the high blast radius of unverified automated remediation. 
+I built this solo during my AI engineering internship at **IOTA Solutions**. It started as a six-week project and was extended by four weeks into a product-development challenge for their monitoring platform, **Trace9**. It went through three MVPs in ten weeks, and the agent now runs as a module in their environment.
 
-The **Icinga AI Agent** resolves these challenges by uniting deep monitoring introspection with safe execution:
-1. **Introspects Telemetry**: Queries Icinga 2 Core API, Director API, MySQL IDO, and OpenSearch/Elasticsearch cluster indices in real time.
-2. **Contextualizes Root Cause**: Uses a hybrid semantic search engine across internal runbooks and business process monitoring (BPM) dependency trees to isolate root causes from downstream cascading noise.
-3. **Executes Safely**: Employs deterministic Python-level RBAC tool gating and a two-phase Human-In-The-Loop (HITL) approval gate before dispatching high-impact commands (reboots, config deploys).
-4. **Reports & Communicates**: Dispatches adaptive incident cards to Microsoft Teams, notifies on-call teams, and generates 30-day executive SLA compliance reports in PDF and Excel formats.
+| Phase | Focus | Highlights |
+| :--- | :--- | :--- |
+| **MVP 1** — Read-only observability agent | Natural-language interface over the Icinga 2 API | LangChain ReAct agent on a local Ollama model, Streamlit console, RAG over troubleshooting runbooks, alert grouping and correlation |
+| **MVP 2** — Action-capable agent | Let the agent change things, safely | Acknowledgements, downtimes, comments, forced re-checks, host/service onboarding through the Icinga Director API, OpenSearch log analytics, Graphite metric plots, human-in-the-loop confirmations |
+| **MVP 3** — Enterprise upgrade | Production hardening and evaluation | LangGraph state machine, MCP server, hybrid BM25 + dense retrieval, 4-tier RBAC with an audit log, native Icinga Web 2 copilot module, FastAPI SSE backend, Sentry tracing, LLM benchmarking on a dedicated 16 GB GPU, SLA reporting and NOC automation |
 
----
-
-## 🚀 Core Enterprise Pillars
-
-### 1. Production-Grade Semantic RAG Pipeline
-*Implementation: [`rag_pipeline.py`](rag_pipeline.py), [`rag_chunkers.py`](rag_chunkers.py), [`knowledge_base.py`](knowledge_base.py)*
-
-- **Hybrid Retrieval Architecture**: Combines dense semantic vector retrieval (`sentence-transformers/all-MiniLM-L6-v2`) with sparse lexical BM25 token matching using **Reciprocal Rank Fusion (RRF)** to eliminate semantic misses and exact-term keyword blindspots.
-- **Hierarchical Markdown Chunking**: [`rag_chunkers.py`](rag_chunkers.py) splits technical runbooks by semantic headers (`#`, `##`, `###`), preserving executable bash/systemctl code blocks, alert error signatures, and operational context without fragmentation.
-- **Cross-Encoder Reranking**: Re-scores candidate context passages with a cross-encoder model before feeding them to the LLM context window.
-- **RAG Triad Benchmarking**: Evaluated using [`benchmark_rag.py`](benchmark_rag.py) with empirical scores:
-  - **Faithfulness / Groundedness**: `94.2%`
-  - **Answer Relevance**: `91.8%`
-  - **Context Precision**: `93.5%`
-
-### 2. Multi-Tier LLM Benchmarking & Hardware Sizing
-*Implementation: [`benchmark_llm.py`](benchmark_llm.py), [`benchmark_enterprise_20b_cloud.py`](benchmark_enterprise_20b_cloud.py), [`generate_llm_visualizations.py`](generate_llm_visualizations.py)*
-
-A comprehensive empirical evaluation framework testing small, medium, and cloud-scale models for real-world AIOps workloads:
-- **Evaluated Models**:
-  - *Edge / Specialist SLM*: Gemma 4 e4b (4B), Phi-4 Mini (3.8B)
-  - *Mid-Tier Internal GPU*: Gemma 4 12B, Qwen 2.5 14B
-  - *Enterprise Cloud / Datacenter*: GPT-OSS 20B, Qwen 2.5 72B, Mistral Enterprise
-- **Benchmark Dimensions**:
-  - **TTFT (Time-to-First-Token)** and Prompt Caching latency improvements.
-  - **Generation Throughput** (tokens/sec) under single-worker and concurrent loads (1–64 parallel workers).
-  - **VRAM Footprint & Precision**: FP16 vs INT8 vs INT4 AWQ/GGUF quantization analysis.
-  - **Context Window Scaling**: Latency and accuracy degradation up to 128k context windows.
-  - **Function-Calling & JSON Accuracy**: Evaluating deterministic JSON output for API tool dispatch.
-
-### 3. Closed-Loop DevOps & Infrastructure Remediation
-*Implementation: [`agent.py`](agent.py), [`icinga_actions.py`](icinga_actions.py), [`icinga_api.py`](icinga_api.py), [`bpm_automation.py`](bpm_automation.py)*
-
-Empowers the AI Agent with active DevOps remediation capabilities:
-- **Icinga Core Actions**: Acknowledge alerts (`acknowledge_alert`), schedule maintenance windows (`schedule_downtime`), and force immediate active checks (`trigger_check`).
-- **Remote Host Remediation**: Remote SSH execution (`restart_service`) via Paramiko with automated service status pre-validation, systemctl restart, and post-flight verification.
-- **Icinga Director Config Automation**: Programmatic configuration management via Director REST API:
-  - `director_create_host`: Creates monitored hosts with automatic inheritance and mandatory `check_command=hostalive` fallback assignment to prevent Director deployment schema validation errors.
-  - `director_delete_host`: Deletes decommissioned nodes safely.
-  - `director_deploy_config`: Triggers zero-downtime Director configuration deployments to the active Icinga Core daemon.
-- **Business Process Monitoring (BPM) Root Cause Analysis**: Queries recursive dependency trees (`query_business_process_tree`) to trace service dependencies and instantly distinguish root-cause database/infrastructure failures from cascading frontend alert noise.
-
-### 4. Deterministic RBAC & Two-Phase HITL Safety Gate
-*Implementation: [`rbac_manager.py`](rbac_manager.py), [`agent.py`](agent.py)*
-
-Eliminates the risks of prompt injection and accidental destructive execution:
-- **Deterministic Tool-Gating**: Runtime Python decorators (`@require_tier`) inspect user credentials before any tool function executes. Prompt injections cannot bypass programmatic authorization.
-- **4-Tier Clearance Hierarchy**:
-  - **Tier 1 (L1 Read-Only)**: Telemetry queries, metric visualization, log searches.
-  - **Tier 2 (L2 Operator)**: Alert acknowledgement, maintenance scheduling, forced checks.
-  - **Tier 3 (L3 DevOps Engineer)**: Remote service restarts, host creation, Director deploys.
-  - **Tier 4 (L4 Platform Admin)**: Host deletion, global security configurations, full platform rights.
-- **Two-Phase Human-in-the-Loop (HITL)**: High-blast-radius actions (service restart, host deletion) generate a staged diff proposal. The tool is halted in a pending state until a human operator confirms execution.
-- **HMAC-Signed Cryptographic Audit Log**: Every tool attempt, approval, and rejection is recorded to [`rbac_audit_log.json`](rbac_audit_log.json) with SHA-256 signatures for forensic auditability.
-
-### 5. Multi-Agent Orchestration & Executive Reporting
-*Implementation: [`multi_agent_system.py`](multi_agent_system.py), [`communication_dispatcher.py`](communication_dispatcher.py), [`report_generator.py`](report_generator.py)*
-
-- **Specialized Multi-Agent Swarm**:
-  - **Triage & Sentry Agent**: Ingests incoming alerts, deduplicates, and evaluates blast radius.
-  - **Knowledge & RAG Agent**: Retrieves relevant runbooks and architectural runbooks.
-  - **DevOps Remediation Agent**: Formulates and stages remediation plans.
-  - **Communications Agent**: Formats rich notifications and coordinates approvals.
-- **Enterprise Notification Dispatcher**:
-  - **Microsoft Teams Adaptive Cards**: Formatted JSON action cards with interactive buttons, state highlights, and direct drilldown links.
-  - **Email Relay**: Automated incident reports dispatched to responsible engineering distribution lists.
-- **30-Day Executive SLA & Incident Reporting**: Generates C-suite SLA compliance reports ([`enterprise_sla_report.pdf`](enterprise_sla_report.pdf), [`enterprise_sla_report.xlsx`](enterprise_sla_report.xlsx)) with incident distribution pie charts, MTTR analysis, and uptime trend graphics.
-
-### 6. Native IcingaWeb 2 Copilot Module
-*Implementation: [`icinga-module-ai/`](icinga-module-ai/)*
-
-Embeds directly into the production **IcingaWeb 2** interface:
-- **Non-Intrusive Floating Drawer**: Draggable, collapsible, and dockable AI Copilot panel integrated seamlessly with IcingaWeb 2 CSS and themes.
-- **Real-Time Streaming**: Server-Sent Events (SSE) streaming tokens directly into the UI with zero perceived latency.
-- **Live Tool Execution Callouts**: Expandable badges displaying tool execution arguments, live output, and LLM reasoning traces.
-- **Quick Action Pills**: Pre-configured operational shortcuts (*"List Down Hosts"*, *"Diagnose Cluster Health"*, *"Generate SLA Report"*).
+Phase-by-phase write-ups live in [`docs/phases/`](docs/phases).
 
 ---
 
-## 📊 System Architecture Diagram
+## What it can do
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/screenshots/01-rag-root-cause-analysis.png" alt="Runbook-grounded root cause analysis"><br><b>Root-cause analysis grounded in runbooks.</b> Hybrid retrieval pulls the relevant remediation steps instead of letting the model guess.</td>
+<td width="50%"><img src="docs/images/screenshots/02-fleet-health-summary.png" alt="Fleet health summary"><br><b>Fleet-wide triage.</b> Live host and service state, grouped and summarized on request.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/images/screenshots/03-hitl-confirmation-gate.png" alt="Human-in-the-loop confirmation"><br><b>Human-in-the-loop gate.</b> Write actions stop for explicit operator approval, and they are checked against the operator's RBAC tier before they run.</td>
+<td width="50%"><img src="docs/images/screenshots/04-bpm-dag-generation.png" alt="Business process tree generation"><br><b>Business-process automation.</b> Generates quorum-based business-process trees for Icinga's Business Process module.</td>
+</tr>
+</table>
+
+**48 agent tools** across five areas:
+
+- **Monitoring reads**: system status, hosts, services, critical alerts, outage history, downtimes, notification history, check statistics, state timelines.
+- **Logs and metrics**: OpenSearch/Elasticsearch search, error aggregation, log-spike detection, cluster health, and Graphite metric plots.
+- **Actions**: acknowledge or un-acknowledge, schedule downtime, add comments, send custom notifications, force re-checks.
+- **Icinga Director automation**: create host groups, templates, hosts, service groups, services, service sets and check commands, then deploy the config.
+- **NOC automation**: business-process tree synthesis, 30-day SLA reports (PDF and Excel), smart alert routing, shift-handover briefings to email and Microsoft Teams.
+
+---
+
+## Architecture
 
 ```mermaid
-flowchart TB
-    subgraph UI_Layer["🖥️ Presentation & User Interface"]
-        IcingaUI["IcingaWeb 2 Native AI Module<br/>(PHP / JavaScript / CSS)"]
-        StreamlitUI["Streamlit Operations Dashboard<br/>(Interactive Chat & Diagnostics)"]
+flowchart LR
+    subgraph UI[Operator interfaces]
+        W2[Icinga Web 2 copilot module<br/>PHP · JS · SSE]
+        ST[Streamlit console]
+        MCPC[Any MCP client]
     end
-
-    subgraph API_Bridge["⚡ API Bridge & Security Gateway"]
-        FastAPIServer["FastAPI Gateway (api/server.py)<br/>CORS • SSE Streaming • Sentry APM"]
-        RBAC["Deterministic RBAC Interceptor<br/>(@require_tier • 4 Security Tiers)"]
-        HITL["Two-Phase HITL Safety Gate<br/>(Staged Diff & Human Approval)"]
+    subgraph Core[Agent core]
+        API[FastAPI gateway<br/>SSE streaming · Sentry]
+        RBAC[RBAC gate<br/>L1–L4, deny by default]
+        HITL[Human approval<br/>for write actions]
+        AG[LangGraph ReAct agent<br/>48 tools]
+        MCP[MCP server]
     end
-
-    subgraph Agent_Core["🧠 Intelligence & Orchestration Core"]
-        MultiAgent["Multi-Agent Orchestrator<br/>(Triage • RAG • Remediation • Comms)"]
-        LangChainAgent["LangChain ReAct / LangGraph Engine<br/>(Dynamic Tool Dispatch)"]
-        LLMServer["LLM Inference Engine<br/>(Ollama / vLLM: Gemma 4 12B / GPT-OSS 20B)"]
+    subgraph Know[Knowledge]
+        RAG[Hybrid retrieval<br/>BM25 + MiniLM embeddings + RRF]
+        KB[(Runbooks · ChromaDB)]
     end
-
-    subgraph RAG_Engine["📚 Semantic RAG Subsystem"]
-        ChromaStore["ChromaDB Vector Store<br/>(sentence-transformers/all-MiniLM-L6-v2)"]
-        BM25["BM25 Lexical Keyword Engine"]
-        RRF["Reciprocal Rank Fusion (RRF) Reranker"]
-        Runbooks["Technical Runbooks & Documentation<br/>(Markdown / Knowledge Base)"]
+    subgraph LLM[Inference]
+        OL[Ollama: local or GPU server]
+        GQ[Groq cloud fallback]
     end
-
-    subgraph Infrastructure["⚙️ Enterprise Infrastructure & Telemetry"]
-        IcingaCore["Icinga 2 Core API<br/>(Alerts, Downtime, Checks)"]
-        DirectorAPI["Icinga Director API<br/>(Host Config, Deployments)"]
-        MySQL_IDO["MySQL IDO Database<br/>(Historical State & Telemetry)"]
-        OpenSearch["OpenSearch / Elasticsearch<br/>(Log Analytics & Traces)"]
-        RemoteSSH["Target Server Infrastructure<br/>(SSH Systemctl Service Control)"]
+    subgraph Infra[Monitoring stack]
+        IC[Icinga 2 REST API]
+        DIR[Icinga Director API]
+        DB[(MySQL IDO)]
+        OS[(OpenSearch)]
+        GR[Graphite]
     end
-
-    subgraph Notifications["📢 Communications & Reporting"]
-        TeamsCard["Microsoft Teams<br/>(Adaptive Cards)"]
-        SMTPRelay["Corporate Email Relay<br/>(PDF & Excel SLA Reports)"]
-        AuditLog["Audit & Forensics<br/>(rbac_audit_log.json)"]
-    end
-
-    %% Wiring
-    IcingaUI -->|REST / SSE| FastAPIServer
-    StreamlitUI -->|Direct / PyBridge| Agent_Core
-    FastAPIServer --> RBAC
-    RBAC --> HITL
-    HITL --> LangChainAgent
-    LangChainAgent <--> MultiAgent
-    Agent_Core <--> LLMServer
-    Agent_Core <--> RRF
-    RRF <--> ChromaStore
-    RRF <--> BM25
-    Runbooks --> ChromaStore & BM25
-
-    LangChainAgent -->|Action Dispatch| IcingaCore
-    LangChainAgent -->|Config Management| DirectorAPI
-    LangChainAgent -->|Read Queries| MySQL_IDO
-    LangChainAgent -->|Log Analysis| OpenSearch
-    LangChainAgent -->|Remote Exec| RemoteSSH
-
-    MultiAgent --> TeamsCard
-    MultiAgent --> SMTPRelay
-    RBAC --> AuditLog
+    W2 --> API --> RBAC --> HITL --> AG
+    ST --> AG
+    MCPC --> MCP --> AG
+    AG <--> RAG --> KB
+    AG <--> OL & GQ
+    AG --> IC & DIR & DB & OS & GR
 ```
 
----
+### Design decisions
 
-## 🛠️ Agent Tool Matrix & Access Clearances
-
-| Tool Name | Module | Operation | Blast Radius | Required RBAC Tier | HITL Approval Required? |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `get_host_details` | `icinga_api.py` | Read API | None (Zero risk) | **L1: Read-Only** | No |
-| `list_all_down_hosts` | `icinga_api.py` | Read API | None (Zero risk) | **L1: Read-Only** | No |
-| `search_service_logs` | `elasticsearch_api.py`| Read Logs | None (Zero risk) | **L1: Read-Only** | No |
-| `search_runbooks` | `knowledge_base.py` | Hybrid RAG | None (Zero risk) | **L1: Read-Only** | No |
-| `query_business_process_tree` | `bpm_automation.py` | BPM Read | None (Zero risk) | **L1: Read-Only** | No |
-| `acknowledge_alert` | `icinga_actions.py` | State Change | Low (Silences alert) | **L2: Operator** | No |
-| `schedule_downtime` | `icinga_actions.py` | State Change | Low (Suppresses notifications)| **L2: Operator** | No |
-| `trigger_check` | `icinga_actions.py` | Active Check | Low (Triggers check execution)| **L2: Operator** | No |
-| `restart_service` | `icinga_actions.py` | SSH Remote Exec| High (Restarts active daemon) | **L3: DevOps Eng** | **Yes (Staged Confirmation)** |
-| `director_create_host` | `icinga_actions.py` | Director API | Medium (Adds node to config) | **L3: DevOps Eng** | No |
-| `director_deploy_config`| `icinga_actions.py` | Director API | High (Reloads Core daemon) | **L3: DevOps Eng** | **Yes (Staged Confirmation)** |
-| `director_delete_host` | `icinga_actions.py` | Director API | High (Removes node from monitoring)| **L4: Platform Admin**| **Yes (Staged Confirmation)** |
+- **Authorization lives in code, not in the prompt.** The `@require_tier` decorator and `RBACManager` check the operator's tier at the tool's Python entry point, before any side effect, so a prompt injection cannot talk the model past the check. Any tool missing from the permission map requires the top tier (deny by default), and every authorized or blocked attempt is written to an audit log.
+- **Two locks on every write.** An action needs both the right RBAC tier and explicit operator confirmation in the UI.
+- **Hybrid retrieval.** Pure vector search missed exact tokens such as error codes and service names, so BM25 runs alongside dense embeddings and Reciprocal Rank Fusion merges the two ranked lists (k = 60). Runbooks are chunked on their Markdown headers so command blocks stay intact.
+- **Tools exposed over MCP.** `mcp_server.py` serves the same tool registry through the Model Context Protocol, so any MCP-compatible client can use it, not just this UI.
+- **Retrieval was benchmarked, not assumed.** Naive vector RAG, hybrid RAG, and an optimized pipeline (multi-query, HyDE, cross-encoder reranking, confidence threshold) were scored on the same 55-query set, distractors included. See the results below.
+- **The model choice was measured.** 14 model configurations on a 4 GB laptop GPU and a 16 GB GPU server were benchmarked on throughput, time-to-first-token, KV-cache reuse and tool-call accuracy before choosing defaults.
 
 ---
 
-## 📂 Repository Structure
+## Measured results
 
-```text
-├── agent.py                                 # Main LangChain ReAct & LangGraph Agent orchestration engine
-├── app.py                                   # Streamlit interactive operations and chat frontend
-├── api/
-│   └── server.py                            # FastAPI backend server (REST, SSE streaming, Sentry APM)
-├── bpm_automation.py                        # Business Process Monitoring (BPM) tree analysis engine
-├── communication_dispatcher.py              # Microsoft Teams Adaptive Cards & Email dispatch engine
-├── database_api.py                          # MySQL IDO database telemetry query interface
-├── elasticsearch_api.py                     # OpenSearch / Elasticsearch log retrieval interface
-├── graphite_api.py                          # Graphite / Carbon metric visualization interface
-├── icinga_actions.py                        # Action tools (Acknowledge, Downtime, Checks, Restarts, Director)
-├── icinga_api.py                            # Icinga 2 Core REST API client
-├── knowledge_base.py                        # Document ingestion, ChromaDB vector store, and search interface
-├── multi_agent_system.py                    # Multi-agent architecture (Triage, RAG, Remediation, Comms)
-├── notification_engine.py                   # Alert notification routing and policy engine
-├── rag_chunkers.py                          # Multi-granularity hierarchical Markdown chunking algorithms
-├── rag_pipeline.py                          # Hybrid RAG pipeline (Dense Vector + BM25 + RRF reranker)
-├── rbac_manager.py                          # 4-Tier RBAC authorization engine & HMAC audit logger
-├── report_generator.py                      # 30-Day Executive SLA report generator (PDF, Excel, Charts)
-├── seed_icinga_fleet.py                     # Automated fleet provisioning and mock alert seeder
-├── requirements.txt                         # Python dependencies
-├── docker-compose.yaml                      # Icinga 2, MySQL, and OpenSearch lab environment
-│
-├── icinga-module-ai/                        # Native IcingaWeb 2 Copilot Module
-│   ├── configuration.php                    # Module registration and config hooks
-│   ├── run.php                              # Web routing and layout injection hooks
-│   └── public/
-│       ├── css/module.css                   # Responsive copilot styling and themes
-│       └── js/
-│           ├── bootstrap_fixed.js           # Production-ready client copilot bundle
-│           └── module.js                    # Core event loop and UI interaction controller
-│
-├── docs/                                    # Documentation and technical runbooks
-│   ├── troubleshooting_runbooks.md          # Internal incident remediation playbooks
-│   └── architecture_diagram.png             # Visual architectural reference
-│
-├── benchmarks & scripts/                    # Research, evaluation, and benchmarking suite
-│   ├── benchmark_enterprise_20b_cloud.py    # 20B+ Cloud/Datacenter LLM benchmark suite
-│   ├── benchmark_llm.py                     # Local/Internal LLM benchmarking suite (TTFT, VRAM, Throughput)
-│   ├── benchmark_rag.py                     # RAG Triad benchmark suite (Faithfulness, Relevance, Context)
-│   ├── generate_llm_visualizations.py       # Visualization generator for LLM benchmark charts
-│   ├── generate_20b_cloud_visualization.py  # Visualization generator for enterprise cloud models
-│   ├── generate_rag_visualizations.py       # Visualization generator for RAG metrics
-│   ├── manual_devops_tester.py              # Interactive CLI for testing RBAC and DevOps tools
-│   ├── test_action_flow.py                  # End-to-end integration test for action execution
-│   ├── test_devops_automation.py            # Automated test runner for DevOps automation tools
-│   └── test_live_agent.py                   # Live query validation against the running LLM
-│
-└── deliverables & reports/                  # Comprehensive executive deliverables and study guides
-    ├── FINAL_EXECUTIVE_DELIVERABLE_MASTER.md # Complete capstone deliverable document
-    ├── MASTER_STUDY_AND_PRESENTATION_GUIDE.md# Step-by-step presentation script and defense guide
-    ├── ENTERPRISE_AIOPS_MASTER_REPORT.md    # Exhaustive technical architecture report
-    ├── ENTERPRISE_20B_CLOUD_BENCHMARK_REPORT.md # 20B model benchmark deep-dive
-    ├── DAY1_SEMANTIC_RAG_DEEPDIVE_REPORT.md # RAG architecture deep-dive report
-    ├── DEVOPS_TESTING_GUIDE.md              # Complete DevOps test verification runbook
-    ├── enterprise_sla_report.pdf            # Sample generated 30-day executive SLA report (PDF)
-    └── enterprise_sla_report.xlsx           # Sample generated 30-day executive SLA report (Excel)
-```
+**Retrieval quality.** 55 queries × 3 pipelines, including distractor queries ([raw results](benchmarks/results/rag_benchmark_results.json)):
+
+| Pipeline | Precision@1 | Recall@3 | MRR | Hallucinated answers |
+| :--- | :---: | :---: | :---: | :---: |
+| Naive semantic RAG | 83.6% | 90.9% | 0.87 | 5 |
+| Hybrid RAG (BM25 + dense + RRF) | 89.1% | 90.9% | 0.90 | 5 |
+| **Optimized RAG** (domain-aware chunking + multi-query + HyDE + cross-encoder rerank + confidence threshold) | **98.2%** | **98.2%** | **0.98** | **0** |
+
+The optimized pipeline also rejected 100% of the distractor queries, where the other two pipelines rejected none.
+
+**LLM inference on the dedicated 16 GB GPU** ([raw results](benchmarks/results)):
+
+| Model | Generation throughput | Tool-call precision |
+| :--- | :---: | :---: |
+| gpt-oss:20b (MXFP4) | ~120 tok/s | 100% ([report](docs/benchmarks/gpt-oss-20b.md)) |
+| gemma4:e4b | ~95 tok/s | 100% |
+| qwen3:14b (Q4_K_M) | ~80 tok/s | 60% |
 
 ---
 
-## ⚡ Quickstart & Deployment Guide
+## Quickstart
 
-### Prerequisites
-- **Operating System**: Linux (Ubuntu 22.04+ recommended), macOS, or Windows 11 with WSL2 / PowerShell.
-- **Python**: Version `3.10` or higher.
-- **Docker & Docker Compose**: For spinning up the local Icinga 2 lab environment.
-- **LLM Inference Server**: 
-  - Either a local [Ollama](https://ollama.ai/) instance running `gemma4:e4b` or `qwen2.5:14b`
-  - Or a remote enterprise endpoint (e.g., vLLM / Ollama server at `http://<your-gpu-ip>:11434`)
+### Option A: try it in two minutes (no Docker)
 
----
+`DEMO_MODE=true` makes the agent fall back to a built-in demo fleet whenever Icinga is unreachable.
 
-### 1. Infrastructure Setup (Docker Compose)
-Start the local Icinga 2, MySQL IDO, and OpenSearch monitoring stack:
 ```bash
-docker compose up -d
-```
-*Allow 1-2 minutes for the Icinga 2 daemon, MySQL database, and web server to initialize.*
-
-Verify all containers are healthy:
-```bash
-docker compose ps
-```
-
----
-
-### 2. Python Environment & Dependencies
-Create and activate an isolated Python virtual environment:
-```bash
-# On Linux/macOS
-python3 -m venv venv
-source venv/bin/activate
-
-# On Windows (PowerShell)
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-```
-
-Install all required production dependencies:
-```bash
-pip install --upgrade pip
+git clone https://github.com/muneeb-zia/Icinga_AI_Agent.git
+cd Icinga_AI_Agent
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-```
-
----
-
-### 3. Configuration (.env)
-Create a `.env` file in the project root with your infrastructure parameters:
-```ini
-# LLM Endpoint Configuration
-LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://localhost:11434
-MODEL_NAME=gemma4:12b
-TEMPERATURE=0.0
-
-# Icinga 2 Core API
-ICINGA_API_URL=https://localhost:5665/v1
-ICINGA_API_USER=root
-ICINGA_API_PASSWORD=icinga
-ICINGA_API_VERIFY_SSL=false
-
-# Icinga Director API
-DIRECTOR_API_URL=http://localhost/icingaweb2/director
-DIRECTOR_API_USER=admin
-DIRECTOR_API_PASSWORD=admin
-
-# MySQL IDO Database
-MYSQL_HOST=127.0.0.1
-MYSQL_PORT=3306
-MYSQL_USER=icinga2
-MYSQL_PASSWORD=icinga2
-MYSQL_DATABASE=icinga2
-
-# OpenSearch / Elasticsearch Logs
-OPENSEARCH_HOST=http://localhost:9200
-OPENSEARCH_USER=admin
-OPENSEARCH_PASSWORD=admin
-OPENSEARCH_VERIFY_SSL=false
-
-# RBAC & Security
-DEFAULT_USER_ROLE=L3_DEVOPS_ENGINEER
-RBAC_HMAC_SECRET=your-enterprise-secret-key-here
-
-# Communication & Reporting
-TEAMS_WEBHOOK_URL=https://outlook.office.com/webhook/your-webhook-url
-SMTP_SERVER=smtp.internal.company.com
-SMTP_PORT=587
-SMTP_USER=aiops-notifications@company.com
-SMTP_PASSWORD=your-smtp-password
-```
-
----
-
-### 4. Starting the FastAPI Bridge Server
-The FastAPI backend serves as the communications bridge for the IcingaWeb 2 module:
-```bash
-uvicorn api.server:app --host 0.0.0.0 --port 8000 --reload
-```
-- Interactive API documentation available at: `http://localhost:8000/docs`
-- Health check endpoint: `http://localhost:8000/health`
-
----
-
-### 5. Launching the Streamlit Operations Hub
-Start the rich, interactive Streamlit operations console:
-```bash
+cp .env.example .env
+ollama pull llama3.1:8b        # or set LLM_PROVIDER=groq and GROQ_API_KEY in .env
 streamlit run app.py
 ```
-This automatically opens your browser at `http://localhost:8501`.
+
+Open http://localhost:8501 and try one of the scenario buttons.
+
+> On a GPU with little memory, a smaller model such as `qwen2.5:3b` (set `OLLAMA_MODEL`) or the Groq option responds much faster than an 8B model that spills onto the CPU.
+
+### Option B: full lab with Icinga 2, Director, MySQL and OpenSearch
+
+```bash
+docker compose up -d icinga2 opensearch
+# The Icinga container generates its own root API password:
+docker exec icinga-lab cat /etc/icinga2/conf.d/api-users.conf   # copy into ICINGA_API_PASSWORD in .env
+python -m scripts.seed_icinga_fleet        # creates a demo fleet with some failing services
+python -m scripts.seed_opensearch_data     # loads sample logs
+streamlit run app.py
+```
+
+Icinga Web 2 is at http://localhost (default `admin` / `admin123`, configurable).
+
+### Enable the Icinga Web 2 copilot
+
+```bash
+uvicorn api.server:app --port 8000    # streaming backend for the module
+```
+
+docker-compose already mounts `icinga-module-ai/` into the container. Enable it under **Configuration → Modules → ai**, or run `icingacli module enable ai`. A floating copilot button then appears on every Icinga Web 2 page.
+
+### Use it from an MCP client
+
+`mcp_server.py` exposes `tools/list`, `tools/call`, `resources/list` and `resources/read` over the agent's tool registry.
 
 ---
 
-### 6. Enabling the IcingaWeb 2 Copilot Module
-To install the native copilot inside IcingaWeb 2:
-1. Symlink or copy the `icinga-module-ai` directory into the IcingaWeb 2 modules path:
-   ```bash
-   # Linux standard installation path:
-   sudo ln -s $(pwd)/icinga-module-ai /usr/share/icingaweb2/modules/ai
-   ```
-2. Enable the module via the Icinga CLI or Web UI:
-   ```bash
-   sudo icingacli module enable ai
-   ```
-3. Refresh IcingaWeb 2. You will see the floating **AI Copilot** button in the lower-right corner and navigation drawer!
+## Configuration
+
+Every setting is an environment variable. See [`.env.example`](.env.example) for the full list.
+
+| Variable | Purpose | Default |
+| :--- | :--- | :--- |
+| `LLM_PROVIDER` | `ollama` or `groq` | `ollama` |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | Local inference endpoint and model | `http://localhost:11434`, `llama3.1:8b` |
+| `COMPANY_GPU_URL` | Optional dedicated GPU Ollama server shown in the model switcher | same as local |
+| `ICINGA_API_URL` / `ICINGA_API_USER` / `ICINGA_API_PASSWORD` | Icinga 2 REST API | `https://localhost:5665/v1`, `root` |
+| `DIRECTOR_API_URL` | Icinga Director REST API | `http://localhost/icingaweb2/director` |
+| `DB_*` | MySQL IDO for history queries | lab defaults |
+| `ES_HOST` / `ES_PORT` / `ES_ENABLED` | OpenSearch/Elasticsearch for logs | `localhost:9200` |
+| `DEMO_MODE` | Use the built-in demo fleet when Icinga is unreachable | `true` |
+| `SENTRY_DSN` | Enables APM and LangChain tracing | unset (off) |
+| `SMTP_*`, `TEAMS_WEBHOOK_URL` | Report and notification delivery | unset |
 
 ---
 
-## 🧪 Automated Testing & Verification Suite
+## Project structure
 
-The repository includes a comprehensive, automated test suite covering all operational modules:
-
-### 1. Test Action Execution Flow
-Validates the execution flow of acknowledgements, downtime, and forced checks against the Icinga API:
-```bash
-python test_action_flow.py
-```
-
-### 2. Verify DevOps Automation & Director Tools
-Tests programmatic Director host creation, fallback template assignment, and safe rollback:
-```bash
-python test_devops_automation.py
-```
-
-### 3. Interactive DevOps & RBAC CLI Tester
-Manually test tools under different RBAC roles (L1, L2, L3, L4) to verify security rejection and approval triggers:
-```bash
-python manual_devops_tester.py
-```
-
-### 4. Execute RAG Triad Benchmarks
-Computes empirical Faithfulness, Context Precision, and Answer Relevance across technical runbooks:
-```bash
-python benchmark_rag.py
-```
-
-### 5. Run LLM Performance Benchmarks
-Measures TTFT, generation throughput, VRAM consumption, and long-context processing:
-```bash
-python benchmark_llm.py
-```
-
-### 6. Generate 30-Day Executive SLA Reports
-Generates the complete PDF, Excel, and chart artifacts for executive stakeholders:
-```bash
-python report_generator.py
+```text
+├── agent.py                  # LangGraph ReAct agent and its 48 tools
+├── app.py                    # Streamlit operations console
+├── api/server.py             # FastAPI backend: REST, SSE streaming, model switching, Sentry
+├── mcp_server.py             # Model Context Protocol server over the tool registry
+├── icinga_api.py             # Icinga 2 REST client (reads)
+├── icinga_actions.py         # Icinga 2 actions and Director config automation
+├── database_api.py           # MySQL IDO history queries
+├── elasticsearch_api.py      # OpenSearch/Elasticsearch log analytics
+├── graphite_api.py           # Graphite metrics
+├── knowledge_base.py         # Runbook ingestion and vector store
+├── rag_pipeline.py           # Hybrid BM25 + dense retrieval with RRF
+├── rag_chunkers.py           # Header-aware Markdown chunking
+├── rbac_manager.py           # 4-tier RBAC, tool gating, audit log
+├── multi_agent_system.py     # Triage / knowledge / remediation / comms agents
+├── bpm_automation.py         # Business-process tree synthesis
+├── report_generator.py       # SLA reports (PDF + Excel)
+├── notification_engine.py    # Alert classification and routing
+├── communication_dispatcher.py  # SMTP and Microsoft Teams delivery
+├── icinga-module-ai/         # Native Icinga Web 2 copilot module (PHP / JS / LESS)
+├── benchmarks/               # LLM and RAG benchmark suites, results/
+├── tests/                    # Integration and scenario tests
+├── scripts/                  # Lab seeding helpers
+├── docs/                     # Phase write-ups, deep dives, benchmark reports, guides
+├── docker-compose.yaml       # Icinga 2 + Director + MySQL + OpenSearch lab
+└── Dockerfile.api            # Container image for the FastAPI backend
 ```
 
 ---
 
-## 📑 Executive Deliverables & Research Documentation
+## Tests and benchmarks
 
-For detailed technical analysis, benchmarking data, and presentation guides, consult the comprehensive documentation suite:
+Run these from the repository root:
 
-| Document | Description |
+```bash
+python -m tests.test_devops_automation    # BPM, routing, RBAC, report generation (no LLM needed)
+python -m tests.manual_devops_tester      # interactive RBAC / action tester
+python -m tests.test_live_agent           # end-to-end queries against the configured LLM
+python -m benchmarks.benchmark_rag        # retrieval benchmark -> benchmarks/results/
+python -m benchmarks.benchmark_llm        # local LLM throughput / TTFT / tool-accuracy sweep
+```
+
+---
+
+## Documentation
+
+| Topic | Document |
 | :--- | :--- |
-| **[Master Presentation & Defense Playbook](MASTER_STUDY_AND_PRESENTATION_GUIDE.md)** | Step-by-step conceptual guide, code walkthrough, and C-suite defense strategy. |
-| **[Final Executive Capstone Deliverable](FINAL_EXECUTIVE_DELIVERABLE_MASTER.md)** | The complete exhaustive report covering architecture, benchmarks, and production ROI. |
-| **[Semantic RAG Deep-Dive Report](DAY1_SEMANTIC_RAG_DEEPDIVE_REPORT.md)** | Detailed analysis of chunking strategies, hybrid retrieval, and RRF algorithms. |
-| **[LLM Benchmarking & Hardware Sizing](PILLAR2_LLM_BENCHMARKING_DEEPDIVE_REPORT.md)** | Multi-tier hardware benchmarks, concurrency stress curves, and token throughput analysis. |
-| **[20B+ Cloud LLM Benchmark Report](ENTERPRISE_20B_CLOUD_BENCHMARK_REPORT.md)** | Evaluation of GPT-OSS 20B and datacenter models for enterprise observability. |
-| **[DevOps Automation & Security Guide](PILLAR3_DEVOPS_AUTOMATION_DEEPDIVE_REPORT.md)** | Architecture of Director automation, SSH remediation, and 4-tier deterministic RBAC. |
-| **[DevOps Verification Runbook](DEVOPS_TESTING_GUIDE.md)** | Quality assurance test scripts and operational verification procedures. |
-| **[Troubleshooting Runbooks](docs/troubleshooting_runbooks.md)** | Operational incident playbooks ingested by the RAG vector database. |
+| Architecture report | [docs/architecture-report.md](docs/architecture-report.md) |
+| Full technical walkthrough (MVP 1–2) | [docs/technical-deep-dive.md](docs/technical-deep-dive.md) |
+| Hybrid RAG deep dive | [docs/deep-dives/hybrid-rag.md](docs/deep-dives/hybrid-rag.md) |
+| LLM benchmarking and hardware sizing | [docs/deep-dives/llm-benchmarking.md](docs/deep-dives/llm-benchmarking.md) |
+| DevOps automation and RBAC | [docs/deep-dives/devops-automation-and-rbac.md](docs/deep-dives/devops-automation-and-rbac.md) |
+| Testing guides | [docs/guides/](docs/guides) |
+| Phase write-ups | [docs/phases/](docs/phases) |
 
 ---
 
-## 👥 Contributors & License
+## Limitations and next steps
 
-Developed as part of the **Icinga Autonomous AIOps Initiative**.
+- The Streamlit console and the API keep session memory in process; a multi-user deployment needs a shared checkpointer (for example Redis or Postgres).
+- RBAC identities are seeded locally. In production they should come from the Icinga Web 2 user and group backend.
+- Some charts in `docs/images/benchmarks/` (concurrency curve, multi-agent radar) were drawn from hand-entered estimates. The tables above use only measured results.
 
-Distributed under the **MIT License**. See `LICENSE` for more information.
+---
+
+## Author
+
+**Muneeb Ur Rehman Zia**: [GitHub](https://github.com/muneeb-zia)
+
+Released under the [MIT License](LICENSE).

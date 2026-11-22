@@ -1,7 +1,7 @@
 """
 Elasticsearch Integration Module for Icinga AI Agent.
 
-Pre-configured for the production Elasticsearch instance at opensearch.internal:9200.
+Works against any Elasticsearch/OpenSearch cluster configured via ES_HOST / ES_PORT.
 Set ES_ENABLED = True once VPN access is restored.
 
 All functions gracefully handle connection failures and return
@@ -19,7 +19,7 @@ import random
 
 # --- Configuration ---
 # LOCAL SANDBOX: Points to the isolated opensearch-lab container (localhost:9200)
-# This is NOT the company server (opensearch.internal). Safe for testing.
+# Defaults to the local docker-compose OpenSearch sandbox.
 ES_ENABLED = os.environ.get("ES_ENABLED", "true").lower() == "true"
 
 ES_HOST = os.environ.get("ES_HOST", "opensearch-lab" if os.path.exists("/.dockerenv") else "localhost")

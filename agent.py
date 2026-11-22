@@ -3,6 +3,11 @@ import sys
 import dotenv
 dotenv.load_dotenv()
 
+# Windows consoles default to cp1252, which crashes on the emoji in log lines.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 from langchain_ollama import ChatOllama
 import httpx
 from langchain_core.tools import tool
@@ -292,7 +297,7 @@ def get_check_statistics() -> str:
 
 
 # =============================================================================
-# READ TOOLS — Elasticsearch-Powered (Ready for opensearch.internal:9200)
+# READ TOOLS — Elasticsearch/OpenSearch-Powered
 # =============================================================================
 
 @tool
@@ -315,7 +320,7 @@ def get_host_state_timeline(hostname: str, time_range: str = "30d") -> str:
     """
     Retrieves the UP/DOWN state change timeline for a host from Elasticsearch.
     Shows every state transition over the given period — useful for identifying recurring outage patterns.
-    Note: Requires VPN access to opensearch.internal:9200. Returns a fallback message if ES is not connected.
+    Note: Requires a reachable Elasticsearch/OpenSearch cluster (ES_HOST). Returns a fallback message if ES is not connected.
 
     """
     hostname = _parse_str(hostname, "hostname")
@@ -1183,7 +1188,7 @@ read_tools_extended = [
     get_check_statistics,
 ]
 
-# Elasticsearch-Powered Tools (ready for opensearch.internal:9200)
+# Elasticsearch/OpenSearch-Powered Tools
 elasticsearch_tools = [
     search_elasticsearch_logs,
     get_host_state_timeline,
@@ -1355,14 +1360,14 @@ def create_agent(
     base_url: Optional[str] = None
 ):
     """
-    Initializes the LangGraph ReAct Agent with Company GPU Ollama (gpu-server.internal:11434), Local Ollama, or Groq Cloud LPU.
+    Initializes the LangGraph ReAct Agent with a remote GPU Ollama server, Local Ollama, or Groq Cloud LPU.
     
     Args:
         enable_actions: If False, action tools are excluded (read-only mode).
         checkpointer: LangGraph checkpoint saver for conversational memory persistence.
         provider: 'ollama' or 'groq' (defaults to .env USE_LOCAL_LLM / LLM_PROVIDER).
         model_name: Specific model name (defaults to 'gpt-oss:20b' / 'llama3.1:8b' for Ollama, 'openai/gpt-oss-20b' for Groq).
-        base_url: Custom Ollama endpoint (e.g., 'http://gpu-server.internal:11434' for Company GPU).
+        base_url: Custom Ollama endpoint (e.g., 'http://<gpu-server>:11434' for a dedicated GPU box).
     """
     
     # Select tools based on mode
@@ -1373,11 +1378,11 @@ def create_agent(
         
     use_local = os.environ.get("USE_LOCAL_LLM", "true").lower() in ("true", "1", "yes")
     active_provider = (provider or os.environ.get("LLM_PROVIDER", "ollama" if use_local else "groq")).lower()
-    ollama_base_url = base_url or os.environ.get("OLLAMA_BASE_URL") or os.environ.get("COMPANY_GPU_URL") or "http://gpu-server.internal:11434"
-    ollama_model = model_name or os.environ.get("OLLAMA_MODEL", "gpt-oss:20b")
+    ollama_base_url = base_url or os.environ.get("OLLAMA_BASE_URL") or os.environ.get("COMPANY_GPU_URL") or "http://localhost:11434"
+    ollama_model = model_name or os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 
-    if active_provider == "ollama" or use_local:
-        server_tag = "🏢 Company GPU" if "gpu-server.internal" in ollama_base_url else "💻 Local Ollama"
+    if active_provider == "ollama":
+        server_tag = "💻 Local Ollama" if "localhost" in ollama_base_url or "127.0.0.1" in ollama_base_url else "🏢 GPU Server"
         print(f"[Agent] Active Model: {ollama_model} via {server_tag} ({ollama_base_url})")
         _http_client = httpx.Client(
             timeout=httpx.Timeout(
@@ -1401,7 +1406,7 @@ def create_agent(
         if groq_api_key:
             from langchain_groq import ChatGroq
             groq_model = model_name or os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
-            print(f"[Agent] Active Model: {groq_model} via Groq LPU (Key: {groq_api_key[:8]}...)")
+            print(f"[Agent] Active Model: {groq_model} via Groq LPU")
             llm = ChatGroq(
                 model=groq_model,
                 api_key=groq_api_key,

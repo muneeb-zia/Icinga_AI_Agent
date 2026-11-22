@@ -10,14 +10,14 @@ services:
       - "3306:3306"   # MySQL Database (For historical queries)
     environment:
       - ICINGAWEB2_ADMIN_USER=admin
-      - ICINGAWEB2_ADMIN_PASS=admin123
+      - ICINGAWEB2_ADMIN_PASS=${ICINGAWEB2_ADMIN_PASSWORD:-admin123}
       - ICINGA2_IDO_MYSQL_USER=icinga2
-      - ICINGA2_IDO_MYSQL_PASS=***REDACTED***
+      - ICINGA2_IDO_MYSQL_PASS=${ICINGA_DB_PASSWORD:-change-me-lab-db}
       - ICINGAWEB2_MYSQL_USER=icingaweb2
-      - ICINGAWEB2_MYSQL_PASS=***REDACTED***
+      - ICINGAWEB2_MYSQL_PASS=${ICINGA_DB_PASSWORD:-change-me-lab-db}
       - ICINGAWEB2_DIRECTOR_MYSQL_USER=director
-      - ICINGAWEB2_DIRECTOR_MYSQL_PASS=***REDACTED***
-      - ICINGA2_FEATURE_DIRECTOR_PASS=***REDACTED***
+      - ICINGAWEB2_DIRECTOR_MYSQL_PASS=${ICINGA_DB_PASSWORD:-change-me-lab-db}
+      - ICINGA2_FEATURE_DIRECTOR_PASS=${ICINGA_DB_PASSWORD:-change-me-lab-db}
     volumes:
       - icinga-data:/var/lib/icinga2
       - icinga-mysql:/var/lib/mysql
@@ -35,13 +35,15 @@ services:
     container_name: ai-backend
     environment:
       - ICINGA_API_URL=https://icinga-lab:5665/v1
-      - ICINGA_API_PASSWORD=***REDACTED***
+      - ICINGA_API_PASSWORD=${ICINGA_API_PASSWORD}
       - DIRECTOR_URL=http://icinga-lab/icingaweb2/director
       - DIRECTOR_API_URL=http://icinga-lab/icingaweb2/director
       - ES_HOST=opensearch-lab
       - DB_HOST=icinga-lab
-      - DB_PASS=***REDACTED***
-      - SENTRY_DSN=***REDACTED-SENTRY-DSN***
+      - DB_PASS=${ICINGA_DB_PASSWORD:-change-me-lab-db}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1:8b}
     ports:
       - "8000:8000"
     networks:
@@ -50,7 +52,6 @@ services:
       - .:/app  # Live reload during development
 
   # Isolated OpenSearch sandbox — for local testing ONLY.
-  # This is NOT connected to the company's opensearch.internal instance.
   # Icinga writes all its metrics/events here, and the AI Agent reads from here.
   opensearch:
     image: opensearchproject/opensearch:2.13.0

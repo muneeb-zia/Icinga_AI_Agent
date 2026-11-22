@@ -29,26 +29,23 @@ import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.langchain import LangchainIntegration
 
-SENTRY_DSN = os.environ.get(
-    "SENTRY_DSN", 
-    "***REDACTED-SENTRY-DSN***"
-)
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
 SENTRY_ENABLED = bool(SENTRY_DSN)
 
-sentry_sdk.init(
-    dsn=SENTRY_DSN if SENTRY_ENABLED else None,
-    integrations=[
-        FastApiIntegration(),
-        LangchainIntegration(),
-    ],
-    traces_sample_rate=1.0,
-    environment=os.environ.get("ENVIRONMENT", "production"),
-    release="icinga-aiops-agent@2.0.0"
-)
 if SENTRY_ENABLED:
-    print("[Sentry] Observability & LangChain AI Tracing Initialized with live DSN.")
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            FastApiIntegration(),
+            LangchainIntegration(),
+        ],
+        traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "1.0")),
+        environment=os.environ.get("ENVIRONMENT", "production"),
+        release="icinga-aiops-agent@2.0.0"
+    )
+    print("[Sentry] Observability & LangChain AI tracing enabled.")
 else:
-    print("[Sentry] SDK Active (Local APM & LangChain AI Tracing Ready).")
+    print("[Sentry] SENTRY_DSN not set; APM tracing disabled.")
 
 app = FastAPI(
     title="Icinga AI Agent API",
@@ -68,8 +65,8 @@ app.add_middleware(
 # =============================================================================
 # DYNAMIC LLM CONFIGURATION & COMPANY GPU STATE
 # =============================================================================
-DEFAULT_GPU_URL = os.environ.get("COMPANY_GPU_URL") or os.environ.get("OLLAMA_BASE_URL") or "http://gpu-server.internal:11434"
-DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL") or "gpt-oss:20b"
+DEFAULT_GPU_URL = os.environ.get("COMPANY_GPU_URL") or os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434"
+DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL") or "llama3.1:8b"
 
 active_llm_config = {
     "provider": "ollama",
@@ -84,7 +81,7 @@ AVAILABLE_MODELS = [
         "name": "GPT-OSS 20B (Default)",
         "badge": "⚡ Fast / 114 tok/s",
         "server": "🏢 Company GPU",
-        "base_url": "http://gpu-server.internal:11434",
+        "base_url": DEFAULT_GPU_URL,
         "description": "20.9B params, MXFP4, 100% tool calling accuracy"
     },
     {
@@ -92,7 +89,7 @@ AVAILABLE_MODELS = [
         "name": "Qwen3 14B",
         "badge": "🧠 Deep Reasoning",
         "server": "🏢 Company GPU",
-        "base_url": "http://gpu-server.internal:11434",
+        "base_url": DEFAULT_GPU_URL,
         "description": "14B params, deep troubleshooting & root cause reasoning"
     },
     {
@@ -100,7 +97,7 @@ AVAILABLE_MODELS = [
         "name": "Gemma4 12B",
         "badge": "🎯 High Precision",
         "server": "🏢 Company GPU",
-        "base_url": "http://gpu-server.internal:11434",
+        "base_url": DEFAULT_GPU_URL,
         "description": "12B params, structured JSON & metric analytics"
     },
     {
@@ -108,7 +105,7 @@ AVAILABLE_MODELS = [
         "name": "Gemma4 4B",
         "badge": "🚀 Edge Fast",
         "server": "🏢 Company GPU",
-        "base_url": "http://gpu-server.internal:11434",
+        "base_url": DEFAULT_GPU_URL,
         "description": "4B params, ultra-low latency alerts triage"
     },
     {
@@ -116,7 +113,7 @@ AVAILABLE_MODELS = [
         "name": "Llama 3.1 8B Instruct",
         "badge": "🦙 Standard NOC",
         "server": "🏢 Company GPU",
-        "base_url": "http://gpu-server.internal:11434",
+        "base_url": DEFAULT_GPU_URL,
         "description": "8B params, standard operations & NOC runbooks"
     },
     {
@@ -177,7 +174,7 @@ async def switch_model(req: SwitchModelRequest):
         base_url = (req.base_url or ("http://localhost:11434" if "localhost" in model_name else DEFAULT_GPU_URL)).strip()
         provider = (req.provider or "ollama").strip()
 
-        server_label = "🏢 Company GPU (gpu-server.internal)" if "gpu-server.internal" in base_url else "💻 Local Ollama"
+        server_label = "🏢 GPU Server" if base_url == DEFAULT_GPU_URL and "localhost" not in base_url else "💻 Local Ollama"
         print(f"[Model Switch] Switching active agent to model '{model_name}' on {server_label} ({base_url})...")
 
         new_agent = create_agent(

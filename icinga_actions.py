@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+
+load_dotenv()
 """
 Icinga Actions Module — Phase 2 Action-Capable Agent.
 
@@ -24,7 +27,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- Configuration ---
 ICINGA_API_URL = os.environ.get("ICINGA_API_URL", "https://icinga-lab:5665/v1" if os.path.exists("/.dockerenv") else "https://localhost:5665/v1")
-ACTION_AUTH = ("root", os.environ.get("ICINGA_API_PASSWORD", "***REDACTED***"))
+ACTION_AUTH = (os.environ.get("ICINGA_API_USER", "root"), os.environ.get("ICINGA_API_PASSWORD", ""))
 
 
 def _action_request(endpoint: str, data: Dict, method: str = "POST") -> Any:
